@@ -22,6 +22,7 @@ compile_error!("BUG: libcec abi not detected");
 use log::{trace, warn};
 
 use std::{collections::HashSet, pin::Pin};
+use thiserror::Error;
 
 use arrayvec::ArrayVec;
 use libcec_sys::{
@@ -301,7 +302,7 @@ mod datapacket_tests {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CecCommand {
     #[doc = "< the logical address of the initiator of this message"]
     pub initiator: CecLogicalAddress,
@@ -336,10 +337,13 @@ impl From<CecCommand> for cec_command {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Error)]
 pub enum TryFromCecCommandError {
+    #[error("unknown opcode")]
     UnknownOpcode,
+    #[error("unknown initiator")]
     UnknownInitiator,
+    #[error("unknown destination")]
     UnknownDestination,
 }
 
@@ -466,15 +470,19 @@ mod command_tests {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Error)]
 pub enum TryFromCecLogMessageError {
+    #[error("message parse error")]
     MessageParseError,
+    #[error("log level parse error")]
     LogLevelParseError,
+    #[error("timestamp parse error")]
     TimestampParseError,
+    #[error("unknown log level")]
     UnknownLogLevel,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CecLogMessage {
     #[doc = "the actual message"]
     pub message: String,
@@ -571,9 +579,11 @@ impl CecLogicalAddresses {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Error)]
 pub enum TryFromCecLogicalAddressesError {
+    #[error("unknown primary address")]
     UnknownPrimaryAddress,
+    #[error("invalid primary address")]
     InvalidPrimaryAddress,
 }
 
@@ -792,8 +802,9 @@ pub struct CecKeypress {
     pub duration: Duration,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Error)]
 pub enum TryFromCecKeyPressError {
+    #[error("unknown keycode")]
     UnknownKeycode,
 }
 
@@ -884,9 +895,13 @@ mod cec_device_type_vec_tests {
     }
 }
 
+#[derive(derive_more::Debug)]
 struct CecCallbacks {
+    #[debug(skip)]
     pub key_press_callback: Option<Box<dyn FnMut(CecKeypress) + Send>>,
+    #[debug(skip)]
     pub command_received_callback: Option<Box<dyn FnMut(CecCommand) + Send>>,
+    #[debug(skip)]
     pub log_message_callbacks: Option<Box<dyn FnMut(CecLogMessage) + Send>>,
     // pub onSourceActivated: FnSourceActivated,
 }
@@ -959,17 +974,21 @@ static mut CALLBACKS: ICECCallbacks = ICECCallbacks {
     sourceActivated: Option::None,
 };
 
-#[derive(Builder)]
+#[derive(Builder, derive_more::Debug)]
 #[builder(pattern = "owned")]
 pub struct CecConnectionCfg {
+    #[debug(skip)]
     #[builder(default, setter(strip_option), pattern = "owned")]
     pub key_press_callback: Option<Box<FnKeyPress>>,
+    #[debug(skip)]
     #[builder(default, setter(strip_option), pattern = "owned")]
     pub command_received_callback: Option<Box<FnCommand>>,
+    #[debug(skip)]
     #[builder(default, setter(strip_option), pattern = "owned")]
     pub log_message_callback: Option<Box<FnLogMessage>>,
 
-    pub port: String,
+    #[builder(default)]
+    pub port: Option<String>,
 
     #[builder(default = "Duration::from_secs(5)")]
     pub open_timeout: Duration,
@@ -1062,20 +1081,28 @@ pub struct CecConnectionCfg {
 
 pub type CecConnectionResult<T> = result::Result<T, CecConnectionResultError>;
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum CecConnectionResultError {
+    #[error("libcec initialization failed")]
     LibInitFailed,
+    #[error("no adapter found")]
     NoAdapterFound,
+    #[error("failed to open adapter")]
     AdapterOpenFailed,
+    #[error("callback registration failed")]
     CallbackRegistrationFailed,
+    #[error("transmit failed")]
     TransmitFailed,
 }
 
+#[derive(Debug)]
 pub struct CecConnection(
     pub CecConnectionCfg,
-    libcec_connection_t,
+    pub libcec_connection_t,
     Pin<Box<CecCallbacks>>,
 );
+
+unsafe impl Send for CecConnection {}
 
 impl CecConnection {
     pub fn transmit(&self, command: CecCommand) -> CecConnectionResult<()> {
@@ -1305,7 +1332,8 @@ impl CecConnectionCfg {
             log_message_callbacks: self.log_message_callback.take(),
         });
         let rust_callbacks_as_void_ptr = &*pinned_callbacks as *const _ as *mut _;
-        let port = CString::new(self.port.clone()).expect("Invalid port name");
+        let port =
+            CString::new(self.port.clone().expect("port required")).expect("Invalid port name");
         let open_timeout = self.open_timeout.as_millis() as u32;
         let connection = CecConnection(
             self,
@@ -1317,6 +1345,67 @@ impl CecConnectionCfg {
         }
 
         if unsafe { libcec_open(connection.1, port.as_ptr(), open_timeout) } == 0 {
+            return Err(CecConnectionResultError::AdapterOpenFailed);
+        }
+
+        #[cfg(abi4)]
+        let callback_ret = unsafe {
+            libcec_sys::libcec_enable_callbacks(
+                connection.1,
+                rust_callbacks_as_void_ptr,
+                &mut CALLBACKS,
+            )
+        };
+        #[cfg(not(abi4))]
+        let callback_ret = unsafe {
+            libcec_sys::libcec_set_callbacks(
+                connection.1,
+                &mut CALLBACKS,
+                rust_callbacks_as_void_ptr,
+            )
+        };
+        if callback_ret == 0 {
+            return Err(CecConnectionResultError::CallbackRegistrationFailed);
+        }
+
+        Ok(connection)
+    }
+
+    pub fn autodetect(mut self) -> CecConnectionResult<CecConnection> {
+        let mut cfg: libcec_configuration = (&self).into();
+        // Consume self.*_callback and build CecCallbacks from those
+        let pinned_callbacks = Box::pin(CecCallbacks {
+            key_press_callback: self.key_press_callback.take(),
+            command_received_callback: self.command_received_callback.take(),
+            log_message_callbacks: self.log_message_callback.take(),
+        });
+        let rust_callbacks_as_void_ptr = &*pinned_callbacks as *const _ as *mut _;
+        let open_timeout = self.open_timeout.as_millis() as u32;
+        let connection = CecConnection(
+            self,
+            unsafe { libcec_initialise(&mut cfg) },
+            pinned_callbacks,
+        );
+        if connection.1 as usize == 0 {
+            return Err(CecConnectionResultError::LibInitFailed);
+        }
+
+        let mut devices: [libcec_sys::cec_adapter_descriptor; 10] = unsafe { std::mem::zeroed() };
+        let num_devices = unsafe {
+            libcec_sys::libcec_detect_adapters(
+                connection.1,
+                &mut devices as _,
+                10,
+                std::ptr::null(),
+                true as i32,
+            )
+        };
+
+        if num_devices < 0 {
+            panic!("no devices found")
+        }
+
+        if unsafe { libcec_open(connection.1, devices[0].strComName.as_ptr(), open_timeout) } == 0 {
             return Err(CecConnectionResultError::AdapterOpenFailed);
         }
 
@@ -1420,3 +1509,5 @@ impl From<&CecConnectionCfg> for libcec_configuration {
         cfg
     }
 }
+
+// unsafe impl Send for CecConnection{}

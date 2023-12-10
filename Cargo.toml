@@ -21,6 +21,8 @@ arrayvec = '0.7.1'
 log = '0.4'
 derive_builder = '0.10.2'
 num-traits = '0.2.14'
+thiserror = "1.0"
+derive_more = { version = "=1.0.0-beta.6", features = ["full"] }
 
 [dependencies.libcec-sys]
 version = '4.0.3'
