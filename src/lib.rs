@@ -7,7 +7,7 @@ use std::{
     collections::HashSet,
     convert::{TryFrom, TryInto},
     ffi::{c_int, CStr, CString},
-    fmt, mem,
+    fmt,
     os::raw::c_void,
     pin::Pin,
     result,
@@ -16,14 +16,14 @@ use std::{
 
 use arrayvec::ArrayVec;
 use cec_sys::*;
-use derive_builder::Builder;
+use derive_builder::{Builder, UninitializedFieldError};
 use log::trace;
 
 pub use crate::types::*;
 
 pub type Result<T> = result::Result<T, Error>;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, PartialEq, thiserror::Error)]
 pub enum Error {
     #[error("failed to convert cmd: {0}")]
     TryFromCmdError(#[from] TryFromCmdError),
@@ -93,6 +93,15 @@ pub enum TryFromLogicalAddressesError {
 pub enum TryFromKeypressError {
     #[error("unknown keycode")]
     UnknownKeycode,
+}
+
+#[derive(Debug, Eq, PartialEq, thiserror::Error)]
+#[non_exhaustive]
+pub enum CfgBuilderError {
+    #[error("uninitialized field: {0}")]
+    UninitializedField(&'static str),
+    #[error("validation error: {0}")]
+    ValidationError(String),
 }
 
 /// CecLogicalAddress which does not allow Unknown variant
@@ -235,7 +244,10 @@ static mut CALLBACKS: ICECCallbacks = ICECCallbacks {
 };
 
 #[derive(Builder, derive_more::Debug)]
-#[builder(pattern = "owned", build_fn(private, name = "build"))]
+#[builder(
+    pattern = "owned",
+    build_fn(private, name = "build", error = "CfgBuilderError")
+)]
 pub struct Cfg {
     #[debug(skip)]
     #[builder(default, setter(strip_option), pattern = "owned")]
@@ -825,6 +837,18 @@ impl Default for LogicalAddresses {
             primary: KnownLogicalAddress::new(LogicalAddress::Unregistered).unwrap(),
             addresses: HashSet::new(),
         }
+    }
+}
+
+impl From<String> for CfgBuilderError {
+    fn from(s: String) -> Self {
+        Self::ValidationError(s)
+    }
+}
+
+impl From<UninitializedFieldError> for CfgBuilderError {
+    fn from(e: UninitializedFieldError) -> Self {
+        Self::UninitializedField(e.field_name())
     }
 }
 

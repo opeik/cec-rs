@@ -103,7 +103,7 @@ impl From<&Cfg> for libcec_configuration {
             cfg = mem::zeroed::<libcec_configuration>();
             libcec_clear_configuration(&mut cfg);
         }
-        cfg.clientVersion = libcec_version::LIBCEC_VERSION_CURRENT as _;
+        cfg.clientVersion = libcec_version::CURRENT as _;
         cfg.strDeviceName = first_n::<{ LIBCEC_OSD_NAME_SIZE as usize }>(&config.device_name);
         cfg.deviceTypes = DeviceTypes::new(config.device_type).into();
         if let Some(v) = config.physical_address {
@@ -550,7 +550,7 @@ mod tests {
         #[test]
         fn test_keypress_from_ffi_known_code() {
             let keypress: Keypress = cec_keypress {
-                keycode: cec_user_control_code::CEC_USER_CONTROL_CODE_UP,
+                keycode: cec_user_control_code::UP,
                 duration: 300,
             }
             .try_into()
