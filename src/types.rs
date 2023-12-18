@@ -3,11 +3,11 @@ use std::ffi::c_int;
 use cec_sys::*;
 use enum_repr::EnumRepr;
 
-use crate::TryFromCecLogicalAddressesError;
+use crate::TryFromLogicalAddressesError;
 
 #[EnumRepr(type = "cec_abort_reason")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecAbortReason {
+pub enum AbortReason {
     UnrecognizedOpcode = cec_abort_reason::CEC_ABORT_REASON_UNRECOGNIZED_OPCODE,
     NotInCorrectModeToRespond = cec_abort_reason::CEC_ABORT_REASON_NOT_IN_CORRECT_MODE_TO_RESPOND,
     CannotProvideSource = cec_abort_reason::CEC_ABORT_REASON_CANNOT_PROVIDE_SOURCE,
@@ -17,7 +17,7 @@ pub enum CecAbortReason {
 
 #[EnumRepr(type = "cec_analogue_broadcast_type")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecAnalogueBroadcastType {
+pub enum AnalogueBroadcastType {
     Cable = cec_analogue_broadcast_type::CEC_ANALOGUE_BROADCAST_TYPE_CABLE,
     Satellite = cec_analogue_broadcast_type::CEC_ANALOGUE_BROADCAST_TYPE_SATELLITE,
     Terrestial = cec_analogue_broadcast_type::CEC_ANALOGUE_BROADCAST_TYPE_TERRESTIAL,
@@ -25,7 +25,7 @@ pub enum CecAnalogueBroadcastType {
 
 #[EnumRepr(type = "cec_audio_rate")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecAudioRate {
+pub enum AudioRate {
     RateControlOff = cec_audio_rate::CEC_AUDIO_RATE_RATE_CONTROL_OFF,
     StandardRate100 = cec_audio_rate::CEC_AUDIO_RATE_STANDARD_RATE_100,
     FastRateMax101 = cec_audio_rate::CEC_AUDIO_RATE_FAST_RATE_MAX_101,
@@ -37,7 +37,7 @@ pub enum CecAudioRate {
 
 #[EnumRepr(type = "cec_audio_status")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecAudioStatus {
+pub enum AudioStatus {
     MuteStatusMask = cec_audio_status::CEC_AUDIO_MUTE_STATUS_MASK,
     VolumeStatusMask = cec_audio_status::CEC_AUDIO_VOLUME_STATUS_MASK,
     VolumeMin = cec_audio_status::CEC_AUDIO_VOLUME_MIN,
@@ -46,7 +46,7 @@ pub enum CecAudioStatus {
 
 #[EnumRepr(type = "cec_version")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecVersion {
+pub enum Version {
     VersionUnknown = cec_version::CEC_VERSION_UNKNOWN,
     Version12 = cec_version::CEC_VERSION_1_2,
     Version12a = cec_version::CEC_VERSION_1_2A,
@@ -58,7 +58,7 @@ pub enum CecVersion {
 
 #[EnumRepr(type = "cec_channel_identifier")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecChannelIdentifier {
+pub enum ChannelIdentifier {
     CecChannelNumberFormatMask = cec_channel_identifier::CEC_CHANNEL_NUMBER_FORMAT_MASK,
     Cec1PartChannelNumber = cec_channel_identifier::CEC_1_PART_CHANNEL_NUMBER,
     Cec2PartChannelNumber = cec_channel_identifier::CEC_2_PART_CHANNEL_NUMBER,
@@ -68,7 +68,7 @@ pub enum CecChannelIdentifier {
 
 #[EnumRepr(type = "cec_deck_control_mode")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecDeckControlMode {
+pub enum DeckControlMode {
     SkipForwardWind = cec_deck_control_mode::CEC_DECK_CONTROL_MODE_SKIP_FORWARD_WIND,
     SkipReverseRewind = cec_deck_control_mode::CEC_DECK_CONTROL_MODE_SKIP_REVERSE_REWIND,
     Stop = cec_deck_control_mode::CEC_DECK_CONTROL_MODE_STOP,
@@ -77,7 +77,7 @@ pub enum CecDeckControlMode {
 
 #[EnumRepr(type = "cec_deck_info")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecDeckInfo {
+pub enum DeckInfo {
     Play = cec_deck_info::CEC_DECK_INFO_PLAY,
     Record = cec_deck_info::CEC_DECK_INFO_RECORD,
     PlayReverse = cec_deck_info::CEC_DECK_INFO_PLAY_REVERSE,
@@ -98,7 +98,7 @@ pub enum CecDeckInfo {
 
 #[EnumRepr(type = "cec_device_type")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecDeviceType {
+pub enum DeviceType {
     Tv = cec_device_type::CEC_DEVICE_TYPE_TV,
     RecordingDevice = cec_device_type::CEC_DEVICE_TYPE_RECORDING_DEVICE,
     Reserved = cec_device_type::CEC_DEVICE_TYPE_RESERVED,
@@ -109,7 +109,7 @@ pub enum CecDeviceType {
 
 #[EnumRepr(type = "cec_display_control")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecDisplayControl {
+pub enum DisplayControl {
     DisplayForDefaultTime = cec_display_control::CEC_DISPLAY_CONTROL_DISPLAY_FOR_DEFAULT_TIME,
     DisplayUntilCleared = cec_display_control::CEC_DISPLAY_CONTROL_DISPLAY_UNTIL_CLEARED,
     ClearPreviousMessage = cec_display_control::CEC_DISPLAY_CONTROL_CLEAR_PREVIOUS_MESSAGE,
@@ -118,7 +118,7 @@ pub enum CecDisplayControl {
 
 #[EnumRepr(type = "cec_external_source_specifier")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecExternalSourceSpecifier {
+pub enum ExternalSourceSpecifier {
     Plug = cec_external_source_specifier::CEC_EXTERNAL_SOURCE_SPECIFIER_EXTERNAL_PLUG,
     PhysicalAddress =
         cec_external_source_specifier::CEC_EXTERNAL_SOURCE_SPECIFIER_EXTERNAL_PHYSICAL_ADDRESS,
@@ -126,7 +126,7 @@ pub enum CecExternalSourceSpecifier {
 
 #[EnumRepr(type = "cec_menu_request_type")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecMenuRequestType {
+pub enum MenuRequestType {
     Activate = cec_menu_request_type::CEC_MENU_REQUEST_TYPE_ACTIVATE,
     Deactivate = cec_menu_request_type::CEC_MENU_REQUEST_TYPE_DEACTIVATE,
     Query = cec_menu_request_type::CEC_MENU_REQUEST_TYPE_QUERY,
@@ -134,14 +134,14 @@ pub enum CecMenuRequestType {
 
 #[EnumRepr(type = "cec_menu_state")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecMenuState {
+pub enum MenuState {
     Activated = cec_menu_state::CEC_MENU_STATE_ACTIVATED,
     Deactivated = cec_menu_state::CEC_MENU_STATE_DEACTIVATED,
 }
 
 #[EnumRepr(type = "cec_play_mode")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecPlayMode {
+pub enum PlayMode {
     PlayForward = cec_play_mode::CEC_PLAY_MODE_PLAY_FORWARD,
     PlayReverse = cec_play_mode::CEC_PLAY_MODE_PLAY_REVERSE,
     PlayStill = cec_play_mode::CEC_PLAY_MODE_PLAY_STILL,
@@ -161,7 +161,7 @@ pub enum CecPlayMode {
 
 #[EnumRepr(type = "cec_power_status")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecPowerStatus {
+pub enum PowerStatus {
     On = cec_power_status::CEC_POWER_STATUS_ON,
     Standby = cec_power_status::CEC_POWER_STATUS_STANDBY,
     InTransitionStandbyToOn = cec_power_status::CEC_POWER_STATUS_IN_TRANSITION_STANDBY_TO_ON,
@@ -171,7 +171,7 @@ pub enum CecPowerStatus {
 
 #[EnumRepr(type = "cec_record_source_type")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecRecordSourceType {
+pub enum RecordSourceType {
     OwnSource = cec_record_source_type::CEC_RECORD_SOURCE_TYPE_OWN_SOURCE,
     DigitalService = cec_record_source_type::CEC_RECORD_SOURCE_TYPE_DIGITAL_SERVICE,
     AnalogueService = cec_record_source_type::CEC_RECORD_SOURCE_TYPE_ANALOGUE_SERVICE,
@@ -182,7 +182,7 @@ pub enum CecRecordSourceType {
 
 #[EnumRepr(type = "cec_record_status_info")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecRecordStatusInfo {
+pub enum RecordStatusInfo {
     RecordingCurrentlySelectedSource =
         cec_record_status_info::CEC_RECORD_STATUS_INFO_RECORDING_CURRENTLY_SELECTED_SOURCE,
     RecordingDigitalService =
@@ -230,7 +230,7 @@ pub enum CecRecordStatusInfo {
 
 #[EnumRepr(type = "cec_recording_sequence")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecRecordingSequence {
+pub enum RecordingSequence {
     Sunday = cec_recording_sequence::CEC_RECORDING_SEQUENCE_SUNDAY,
     Monday = cec_recording_sequence::CEC_RECORDING_SEQUENCE_MONDAY,
     Tuesday = cec_recording_sequence::CEC_RECORDING_SEQUENCE_TUESDAY,
@@ -243,7 +243,7 @@ pub enum CecRecordingSequence {
 
 #[EnumRepr(type = "cec_status_request")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecStatusRequest {
+pub enum StatusRequest {
     On = cec_status_request::CEC_STATUS_REQUEST_ON,
     Off = cec_status_request::CEC_STATUS_REQUEST_OFF,
     Once = cec_status_request::CEC_STATUS_REQUEST_ONCE,
@@ -251,14 +251,14 @@ pub enum CecStatusRequest {
 
 #[EnumRepr(type = "cec_system_audio_status")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecSystemAudioStatus {
+pub enum SystemAudioStatus {
     Off = cec_system_audio_status::CEC_SYSTEM_AUDIO_STATUS_OFF,
     On = cec_system_audio_status::CEC_SYSTEM_AUDIO_STATUS_ON,
 }
 
 #[EnumRepr(type = "cec_timer_cleared_status_data")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecTimerClearedStatusData {
+pub enum TimerClearedStatusData {
     NotClearedRecording =
         cec_timer_cleared_status_data::CEC_TIMER_CLEARED_STATUS_DATA_TIMER_NOT_CLEARED_RECORDING,
     NotClearedNoMatching =
@@ -269,14 +269,14 @@ pub enum CecTimerClearedStatusData {
 
 #[EnumRepr(type = "cec_timer_overlap_warning")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecTimerOverlapWarning {
+pub enum TimerOverlapWarning {
     NoOverlap = cec_timer_overlap_warning::CEC_TIMER_OVERLAP_WARNING_NO_OVERLAP,
     TimerBlocksOverlap = cec_timer_overlap_warning::CEC_TIMER_OVERLAP_WARNING_TIMER_BLOCKS_OVERLAP,
 }
 
 #[EnumRepr(type = "cec_media_info")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecMediaInfo {
+pub enum MediaInfo {
     MediaPresentAndNotProtected = cec_media_info::CEC_MEDIA_INFO_MEDIA_PRESENT_AND_NOT_PROTECTED,
     MediaPresentButProtected = cec_media_info::CEC_MEDIA_INFO_MEDIA_PRESENT_BUT_PROTECTED,
     MediaNotPresent = cec_media_info::CEC_MEDIA_INFO_MEDIA_NOT_PRESENT,
@@ -285,14 +285,14 @@ pub enum CecMediaInfo {
 
 #[EnumRepr(type = "cec_programmed_indicator")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecProgrammedIndicator {
+pub enum ProgrammedIndicator {
     NotProgrammed = cec_programmed_indicator::CEC_PROGRAMMED_INDICATOR_NOT_PROGRAMMED,
     Programmed = cec_programmed_indicator::CEC_PROGRAMMED_INDICATOR_PROGRAMMED,
 }
 
 #[EnumRepr(type = "cec_programmed_info")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecProgrammedInfo {
+pub enum ProgrammedInfo {
     FutureUse = cec_programmed_info::CEC_PROGRAMMED_INFO_FUTURE_USE,
     EnoughSpaceAvailableForRecording =
         cec_programmed_info::CEC_PROGRAMMED_INFO_ENOUGH_SPACE_AVAILABLE_FOR_RECORDING,
@@ -305,7 +305,7 @@ pub enum CecProgrammedInfo {
 
 #[EnumRepr(type = "cec_not_programmed_error_info")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecNotProgrammedErrorInfo {
+pub enum NotProgrammedErrorInfo {
     FutureUse = cec_not_programmed_error_info::CEC_NOT_PROGRAMMED_ERROR_INFO_FUTURE_USE,
     NoFreeTimerAvailable =
         cec_not_programmed_error_info::CEC_NOT_PROGRAMMED_ERROR_INFO_NO_FREE_TIMER_AVAILABLE,
@@ -332,14 +332,14 @@ pub enum CecNotProgrammedErrorInfo {
 
 #[EnumRepr(type = "cec_recording_flag")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecRecordingFlag {
+pub enum RecordingFlag {
     NotBeingUsedForRecording = cec_recording_flag::CEC_RECORDING_FLAG_NOT_BEING_USED_FOR_RECORDING,
     BeingUsedForRecording = cec_recording_flag::CEC_RECORDING_FLAG_BEING_USED_FOR_RECORDING,
 }
 
 #[EnumRepr(type = "cec_tuner_display_info")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecTunerDisplayInfo {
+pub enum TunerDisplayInfo {
     DisplayingDigitalTuner =
         cec_tuner_display_info::CEC_TUNER_DISPLAY_INFO_DISPLAYING_DIGITAL_TUNER,
     NotDisplayingTuner = cec_tuner_display_info::CEC_TUNER_DISPLAY_INFO_NOT_DISPLAYING_TUNER,
@@ -349,7 +349,7 @@ pub enum CecTunerDisplayInfo {
 
 #[EnumRepr(type = "cec_broadcast_system")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecBroadcastSystem {
+pub enum BroadcastSystem {
     PalBG = cec_broadcast_system::CEC_BROADCAST_SYSTEM_PAL_B_G,
     SecamL1 = cec_broadcast_system::CEC_BROADCAST_SYSTEM_SECAM_L1,
     PalM = cec_broadcast_system::CEC_BROADCAST_SYSTEM_PAL_M,
@@ -364,7 +364,7 @@ pub enum CecBroadcastSystem {
 
 #[EnumRepr(type = "cec_user_control_code")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecUserControlCode {
+pub enum UserControlCode {
     Select = cec_user_control_code::CEC_USER_CONTROL_CODE_SELECT,
     Up = cec_user_control_code::CEC_USER_CONTROL_CODE_UP,
     Down = cec_user_control_code::CEC_USER_CONTROL_CODE_DOWN,
@@ -459,7 +459,7 @@ pub enum CecUserControlCode {
 
 #[EnumRepr(type = "cec_logical_address")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecLogicalAddress {
+pub enum LogicalAddress {
     Unknown = cec_logical_address::CECDEVICE_UNKNOWN,
     Tv = cec_logical_address::CECDEVICE_TV,
     Recordingdevice1 = cec_logical_address::CECDEVICE_RECORDINGDEVICE1,
@@ -481,7 +481,7 @@ pub enum CecLogicalAddress {
 
 #[EnumRepr(type = "cec_opcode")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecOpcode {
+pub enum Opcode {
     ActiveSource = cec_opcode::CEC_OPCODE_ACTIVE_SOURCE,
     ImageViewOn = cec_opcode::CEC_OPCODE_IMAGE_VIEW_ON,
     TextViewOn = cec_opcode::CEC_OPCODE_TEXT_VIEW_ON,
@@ -558,7 +558,7 @@ pub enum CecOpcode {
 
 #[EnumRepr(type = "cec_log_level")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecLogLevel {
+pub enum LogLevel {
     Error = cec_log_level::CEC_LOG_ERROR,
     Warning = cec_log_level::CEC_LOG_WARNING,
     Notice = cec_log_level::CEC_LOG_NOTICE,
@@ -569,7 +569,7 @@ pub enum CecLogLevel {
 
 #[EnumRepr(type = "cec_bus_device_status")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecBusDeviceStatus {
+pub enum BusDeviceStatus {
     Unknown = cec_bus_device_status::CEC_DEVICE_STATUS_UNKNOWN,
     Present = cec_bus_device_status::CEC_DEVICE_STATUS_PRESENT,
     NotPresent = cec_bus_device_status::CEC_DEVICE_STATUS_NOT_PRESENT,
@@ -578,7 +578,7 @@ pub enum CecBusDeviceStatus {
 
 #[EnumRepr(type = "cec_vendor_id")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecVendorId {
+pub enum VendorId {
     Toshiba = cec_vendor_id::CEC_VENDOR_TOSHIBA,
     Samsung = cec_vendor_id::CEC_VENDOR_SAMSUNG,
     Denon = cec_vendor_id::CEC_VENDOR_DENON,
@@ -612,7 +612,7 @@ pub enum CecVendorId {
 
 #[EnumRepr(type = "cec_adapter_type")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CecAdapterType {
+pub enum AdapterType {
     Unknown = cec_adapter_type::ADAPTERTYPE_UNKNOWN,
     P8External = cec_adapter_type::ADAPTERTYPE_P8_EXTERNAL,
     P8Daughterboard = cec_adapter_type::ADAPTERTYPE_P8_DAUGHTERBOARD,
@@ -626,13 +626,13 @@ pub enum CecAdapterType {
 
 #[EnumRepr(type = "libcec_version")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum LibcecVersion {
+pub enum LibraryVersion {
     Current = libcec_version::LIBCEC_VERSION_CURRENT,
 }
 
 #[EnumRepr(type = "libcec_alert")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum LibcecAlert {
+pub enum Alert {
     ServiceDevice = libcec_alert::CEC_ALERT_SERVICE_DEVICE,
     ConnectionLost = libcec_alert::CEC_ALERT_CONNECTION_LOST,
     PermissionError = libcec_alert::CEC_ALERT_PERMISSION_ERROR,
@@ -643,34 +643,34 @@ pub enum LibcecAlert {
 
 #[EnumRepr(type = "libcec_parameter_type")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum LibcecParameterType {
+pub enum ParameterType {
     String = libcec_parameter_type::CEC_PARAMETER_TYPE_STRING,
     Unknown = libcec_parameter_type::CEC_PARAMETER_TYPE_UNKOWN,
 }
 
-impl TryFrom<c_int> for CecLogicalAddress {
-    type Error = TryFromCecLogicalAddressesError;
+impl TryFrom<c_int> for LogicalAddress {
+    type Error = TryFromLogicalAddressesError;
 
     fn try_from(value: c_int) -> Result<Self, Self::Error> {
         let x = match value {
-            -1 => CecLogicalAddress::Unknown,
-            0 => CecLogicalAddress::Tv,
-            1 => CecLogicalAddress::Recordingdevice1,
-            2 => CecLogicalAddress::Recordingdevice2,
-            3 => CecLogicalAddress::Tuner1,
-            4 => CecLogicalAddress::Playbackdevice1,
-            5 => CecLogicalAddress::Audiosystem,
-            6 => CecLogicalAddress::Tuner2,
-            7 => CecLogicalAddress::Tuner3,
-            8 => CecLogicalAddress::Playbackdevice2,
-            9 => CecLogicalAddress::Recordingdevice3,
-            10 => CecLogicalAddress::Tuner4,
-            11 => CecLogicalAddress::Playbackdevice3,
-            12 => CecLogicalAddress::Reserved1,
-            13 => CecLogicalAddress::Reserved2,
-            14 => CecLogicalAddress::Freeuse,
-            15 => CecLogicalAddress::Unregistered,
-            _ => return Err(TryFromCecLogicalAddressesError::InvalidPrimaryAddress),
+            -1 => LogicalAddress::Unknown,
+            0 => LogicalAddress::Tv,
+            1 => LogicalAddress::Recordingdevice1,
+            2 => LogicalAddress::Recordingdevice2,
+            3 => LogicalAddress::Tuner1,
+            4 => LogicalAddress::Playbackdevice1,
+            5 => LogicalAddress::Audiosystem,
+            6 => LogicalAddress::Tuner2,
+            7 => LogicalAddress::Tuner3,
+            8 => LogicalAddress::Playbackdevice2,
+            9 => LogicalAddress::Recordingdevice3,
+            10 => LogicalAddress::Tuner4,
+            11 => LogicalAddress::Playbackdevice3,
+            12 => LogicalAddress::Reserved1,
+            13 => LogicalAddress::Reserved2,
+            14 => LogicalAddress::Freeuse,
+            15 => LogicalAddress::Unregistered,
+            _ => return Err(TryFromLogicalAddressesError::InvalidPrimaryAddress),
         };
 
         Ok(x)
