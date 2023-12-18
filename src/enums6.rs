@@ -3,7 +3,7 @@ use enum_repr_derive::{FromEnumToRepr, TryFromReprToEnum};
 //
 // Enums
 //
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecAbortReason {
     #[doc = "!< cec_abort_reason::CEC_ABORT_REASON_UNRECOGNIZED_OPCODE"]
@@ -17,14 +17,14 @@ pub enum CecAbortReason {
     #[doc = "!< cec_abort_reason::CEC_ABORT_REASON_REFUSED"]
     Refused = libcec_sys::CEC_ABORT_REASON_REFUSED,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecAnalogueBroadcastType {
     Cable = libcec_sys::CEC_ANALOGUE_BROADCAST_TYPE_CABLE,
     Satellite = libcec_sys::CEC_ANALOGUE_BROADCAST_TYPE_SATELLITE,
     Terrestial = libcec_sys::CEC_ANALOGUE_BROADCAST_TYPE_TERRESTIAL,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecAudioRate {
     RateControlOff = libcec_sys::CEC_AUDIO_RATE_RATE_CONTROL_OFF,
@@ -35,7 +35,7 @@ pub enum CecAudioRate {
     FastRateMax1001 = libcec_sys::CEC_AUDIO_RATE_FAST_RATE_MAX_100_1,
     SlowRateMin999 = libcec_sys::CEC_AUDIO_RATE_SLOW_RATE_MIN_99_9,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecAudioStatus {
     MuteStatusMask = libcec_sys::CEC_AUDIO_MUTE_STATUS_MASK,
@@ -43,7 +43,7 @@ pub enum CecAudioStatus {
     VolumeMin = libcec_sys::CEC_AUDIO_VOLUME_MIN,
     VolumeMax = libcec_sys::CEC_AUDIO_VOLUME_MAX,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecVersion {
     VersionUnknown = libcec_sys::CEC_VERSION_UNKNOWN,
@@ -54,7 +54,7 @@ pub enum CecVersion {
     Version14 = libcec_sys::CEC_VERSION_1_4,
     Version20 = libcec_sys::CEC_VERSION_2_0,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecChannelIdentifier {
     CecChannelNumberFormatMask = libcec_sys::CEC_CHANNEL_NUMBER_FORMAT_MASK,
@@ -63,7 +63,7 @@ pub enum CecChannelIdentifier {
     CecMajorChannelNumberMask = libcec_sys::CEC_MAJOR_CHANNEL_NUMBER_MASK,
     CecMinorChannelNumberMask = libcec_sys::CEC_MINOR_CHANNEL_NUMBER_MASK,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecDeckControlMode {
     SkipForwardWind = libcec_sys::CEC_DECK_CONTROL_MODE_SKIP_FORWARD_WIND,
@@ -71,7 +71,7 @@ pub enum CecDeckControlMode {
     Stop = libcec_sys::CEC_DECK_CONTROL_MODE_STOP,
     Eject = libcec_sys::CEC_DECK_CONTROL_MODE_EJECT,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecDeckInfo {
     Play = libcec_sys::CEC_DECK_INFO_PLAY,
@@ -91,7 +91,7 @@ pub enum CecDeckInfo {
     OtherStatus = libcec_sys::CEC_DECK_INFO_OTHER_STATUS,
     OtherStatusLg = libcec_sys::CEC_DECK_INFO_OTHER_STATUS_LG,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecDeviceType {
     Tv = libcec_sys::CEC_DEVICE_TYPE_TV,
@@ -101,7 +101,7 @@ pub enum CecDeviceType {
     PlaybackDevice = libcec_sys::CEC_DEVICE_TYPE_PLAYBACK_DEVICE,
     AudioSystem = libcec_sys::CEC_DEVICE_TYPE_AUDIO_SYSTEM,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecDisplayControl {
     DisplayForDefaultTime = libcec_sys::CEC_DISPLAY_CONTROL_DISPLAY_FOR_DEFAULT_TIME,
@@ -109,26 +109,26 @@ pub enum CecDisplayControl {
     ClearPreviousMessage = libcec_sys::CEC_DISPLAY_CONTROL_CLEAR_PREVIOUS_MESSAGE,
     ReservedForFutureUse = libcec_sys::CEC_DISPLAY_CONTROL_RESERVED_FOR_FUTURE_USE,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecExternalSourceSpecifier {
     Plug = libcec_sys::CEC_EXTERNAL_SOURCE_SPECIFIER_EXTERNAL_PLUG,
     PhysicalAddress = libcec_sys::CEC_EXTERNAL_SOURCE_SPECIFIER_EXTERNAL_PHYSICAL_ADDRESS,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecMenuRequestType {
     Activate = libcec_sys::CEC_MENU_REQUEST_TYPE_ACTIVATE,
     Deactivate = libcec_sys::CEC_MENU_REQUEST_TYPE_DEACTIVATE,
     Query = libcec_sys::CEC_MENU_REQUEST_TYPE_QUERY,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecMenuState {
     Activated = libcec_sys::CEC_MENU_STATE_ACTIVATED,
     Deactivated = libcec_sys::CEC_MENU_STATE_DEACTIVATED,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecPlayMode {
     PlayForward = libcec_sys::CEC_PLAY_MODE_PLAY_FORWARD,
@@ -147,7 +147,7 @@ pub enum CecPlayMode {
     SlowReverseMediumSpeed = libcec_sys::CEC_PLAY_MODE_SLOW_REVERSE_MEDIUM_SPEED,
     SlowReverseMaxSpeed = libcec_sys::CEC_PLAY_MODE_SLOW_REVERSE_MAX_SPEED,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecPowerStatus {
     On = libcec_sys::CEC_POWER_STATUS_ON,
@@ -156,7 +156,7 @@ pub enum CecPowerStatus {
     InTransitionOnToStandby = libcec_sys::CEC_POWER_STATUS_IN_TRANSITION_ON_TO_STANDBY,
     Unknown = libcec_sys::CEC_POWER_STATUS_UNKNOWN,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecRecordSourceType {
     OwnSource = libcec_sys::CEC_RECORD_SOURCE_TYPE_OWN_SOURCE,
@@ -165,7 +165,7 @@ pub enum CecRecordSourceType {
     ExternalPlus = libcec_sys::CEC_RECORD_SOURCE_TYPE_EXTERNAL_PLUS,
     ExternalPhysicalAddress = libcec_sys::CEC_RECORD_SOURCE_TYPE_EXTERNAL_PHYSICAL_ADDRESS,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecRecordStatusInfo {
     RecordingCurrentlySelectedSource =
@@ -205,7 +205,7 @@ pub enum CecRecordStatusInfo {
         libcec_sys::CEC_RECORD_STATUS_INFO_RECORDING_HAS_ALREADY_TERMINATED,
     NoRecordingOtherReason = libcec_sys::CEC_RECORD_STATUS_INFO_NO_RECORDING_OTHER_REASON,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecRecordingSequence {
     Sunday = libcec_sys::CEC_RECORDING_SEQUENCE_SUNDAY,
@@ -217,20 +217,20 @@ pub enum CecRecordingSequence {
     Saturday = libcec_sys::CEC_RECORDING_SEQUENCE_SATURDAY,
     OnceOnly = libcec_sys::CEC_RECORDING_SEQUENCE_ONCE_ONLY,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecStatusRequest {
     On = libcec_sys::CEC_STATUS_REQUEST_ON,
     Off = libcec_sys::CEC_STATUS_REQUEST_OFF,
     Once = libcec_sys::CEC_STATUS_REQUEST_ONCE,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecSystemAudioStatus {
     Off = libcec_sys::CEC_SYSTEM_AUDIO_STATUS_OFF,
     On = libcec_sys::CEC_SYSTEM_AUDIO_STATUS_ON,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecTimerClearedStatusData {
     NotClearedRecording = libcec_sys::CEC_TIMER_CLEARED_STATUS_DATA_TIMER_NOT_CLEARED_RECORDING,
@@ -239,13 +239,13 @@ pub enum CecTimerClearedStatusData {
         libcec_sys::CEC_TIMER_CLEARED_STATUS_DATA_TIMER_NOT_CLEARED_NO_INF0_AVAILABLE,
     Cleared = libcec_sys::CEC_TIMER_CLEARED_STATUS_DATA_TIMER_CLEARED,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecTimerOverlapWarning {
     NoOverlap = libcec_sys::CEC_TIMER_OVERLAP_WARNING_NO_OVERLAP,
     TimerBlocksOverlap = libcec_sys::CEC_TIMER_OVERLAP_WARNING_TIMER_BLOCKS_OVERLAP,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecMediaInfo {
     MediaPresentAndNotProtected = libcec_sys::CEC_MEDIA_INFO_MEDIA_PRESENT_AND_NOT_PROTECTED,
@@ -253,13 +253,13 @@ pub enum CecMediaInfo {
     MediaNotPresent = libcec_sys::CEC_MEDIA_INFO_MEDIA_NOT_PRESENT,
     FutureUse = libcec_sys::CEC_MEDIA_INFO_FUTURE_USE,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecProgrammedIndicator {
     NotProgrammed = libcec_sys::CEC_PROGRAMMED_INDICATOR_NOT_PROGRAMMED,
     Programmed = libcec_sys::CEC_PROGRAMMED_INDICATOR_PROGRAMMED,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecProgrammedInfo {
     FutureUse = libcec_sys::CEC_PROGRAMMED_INFO_FUTURE_USE,
@@ -271,7 +271,7 @@ pub enum CecProgrammedInfo {
         libcec_sys::CEC_PROGRAMMED_INFO_MAY_NOT_BE_ENOUGH_SPACE_AVAILABLE,
     NoMediaInfoAvailable = libcec_sys::CEC_PROGRAMMED_INFO_NO_MEDIA_INFO_AVAILABLE,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecNotProgrammedErrorInfo {
     FutureUse = libcec_sys::CEC_NOT_PROGRAMMED_ERROR_INFO_FUTURE_USE,
@@ -295,20 +295,20 @@ pub enum CecNotProgrammedErrorInfo {
     DuplicateAlreadyProgrammed =
         libcec_sys::CEC_NOT_PROGRAMMED_ERROR_INFO_DUPLICATE_ALREADY_PROGRAMMED,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecRecordingFlag {
     NotBeingUsedForRecording = libcec_sys::CEC_RECORDING_FLAG_NOT_BEING_USED_FOR_RECORDING,
     BeingUsedForRecording = libcec_sys::CEC_RECORDING_FLAG_BEING_USED_FOR_RECORDING,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecTunerDisplayInfo {
     DisplayingDigitalTuner = libcec_sys::CEC_TUNER_DISPLAY_INFO_DISPLAYING_DIGITAL_TUNER,
     NotDisplayingTuner = libcec_sys::CEC_TUNER_DISPLAY_INFO_NOT_DISPLAYING_TUNER,
     DisplayingAnalogueTuner = libcec_sys::CEC_TUNER_DISPLAY_INFO_DISPLAYING_ANALOGUE_TUNER,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecBroadcastSystem {
     PalBG = libcec_sys::CEC_BROADCAST_SYSTEM_PAL_B_G,
@@ -322,7 +322,7 @@ pub enum CecBroadcastSystem {
     PalDk = libcec_sys::CEC_BROADCAST_SYSTEM_PAL_DK,
     OtherSystem = libcec_sys::CEC_BROADCAST_SYSTEM_OTHER_SYSTEM,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecUserControlCode {
     Select = libcec_sys::CEC_USER_CONTROL_CODE_SELECT,
@@ -435,7 +435,7 @@ pub enum CecLogicalAddress {
     Freeuse = libcec_sys::CECDEVICE_FREEUSE,
     Unregistered = libcec_sys::CECDEVICE_UNREGISTERED,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecOpcode {
     ActiveSource = libcec_sys::CEC_OPCODE_ACTIVE_SOURCE,
@@ -511,7 +511,7 @@ pub enum CecOpcode {
     Cdc = libcec_sys::CEC_OPCODE_CDC,
     None = libcec_sys::CEC_OPCODE_NONE,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecLogLevel {
     Error = libcec_sys::CEC_LOG_ERROR,
@@ -521,7 +521,7 @@ pub enum CecLogLevel {
     Debug = libcec_sys::CEC_LOG_DEBUG,
     All = libcec_sys::CEC_LOG_ALL,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecBusDeviceStatus {
     Unknown = libcec_sys::CEC_DEVICE_STATUS_UNKNOWN,
@@ -529,7 +529,7 @@ pub enum CecBusDeviceStatus {
     NotPresent = libcec_sys::CEC_DEVICE_STATUS_NOT_PRESENT,
     HandledByLibcec = libcec_sys::CEC_DEVICE_STATUS_HANDLED_BY_LIBCEC,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecVendorId {
     Toshiba = libcec_sys::CEC_VENDOR_TOSHIBA,
@@ -562,7 +562,7 @@ pub enum CecVendorId {
     HarmanKardon = libcec_sys::CEC_VENDOR_HARMAN_KARDON,
     Unknown = libcec_sys::CEC_VENDOR_UNKNOWN,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CecAdapterType {
     Unknown = libcec_sys::ADAPTERTYPE_UNKNOWN,
@@ -575,13 +575,13 @@ pub enum CecAdapterType {
     Aocec = libcec_sys::ADAPTERTYPE_AOCEC,
     Imx = libcec_sys::ADAPTERTYPE_IMX,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[doc = " force exporting through swig"]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum LibcecVersion {
     Current = libcec_sys::LIBCEC_VERSION_CURRENT,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum LibcecAlert {
     ServiceDevice = libcec_sys::CEC_ALERT_SERVICE_DEVICE,
@@ -591,7 +591,7 @@ pub enum LibcecAlert {
     PhysicalAddressError = libcec_sys::CEC_ALERT_PHYSICAL_ADDRESS_ERROR,
     TvPollFailed = libcec_sys::CEC_ALERT_TV_POLL_FAILED,
 }
-#[repr(u32)]
+#[repr(i32)]
 #[derive(FromEnumToRepr, TryFromReprToEnum, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum LibcecParameterType {
     String = libcec_sys::CEC_PARAMETER_TYPE_STRING,

@@ -990,6 +990,9 @@ pub struct CecConnectionCfg {
     #[builder(default)]
     pub port: Option<String>,
 
+    #[builder(default, setter(strip_option))]
+    pub autodetect: Option<bool>,
+
     #[builder(default = "Duration::from_secs(5)")]
     pub open_timeout: Duration,
 
@@ -1093,6 +1096,10 @@ pub enum CecConnectionResultError {
     CallbackRegistrationFailed,
     #[error("transmit failed")]
     TransmitFailed,
+    #[error("port missing")]
+    PortMissing,
+    #[error("ffi error: {0}")]
+    FfiError(#[from] std::ffi::NulError),
 }
 
 #[derive(Debug)]
@@ -1332,19 +1339,26 @@ impl CecConnectionCfg {
             log_message_callbacks: self.log_message_callback.take(),
         });
         let rust_callbacks_as_void_ptr = &*pinned_callbacks as *const _ as *mut _;
-        let port =
-            CString::new(self.port.clone().expect("port required")).expect("Invalid port name");
+        let autodetect = self.autodetect.unwrap_or(false);
+        let port = self.port.clone();
         let open_timeout = self.open_timeout.as_millis() as u32;
+
         let connection = CecConnection(
             self,
             unsafe { libcec_initialise(&mut cfg) },
             pinned_callbacks,
         );
-        if connection.1 as usize == 0 {
+
+        if connection.1.is_null() {
             return Err(CecConnectionResultError::LibInitFailed);
         }
 
-        if unsafe { libcec_open(connection.1, port.as_ptr(), open_timeout) } == 0 {
+        let resolved_port = match Self::detect_port(&connection) {
+            Ok(x) => x,
+            Err(e) => return Err(e),
+        };
+
+        if unsafe { libcec_open(connection.1, resolved_port.as_ptr(), open_timeout) } == 0 {
             return Err(CecConnectionResultError::AdapterOpenFailed);
         }
 
@@ -1371,25 +1385,7 @@ impl CecConnectionCfg {
         Ok(connection)
     }
 
-    pub fn autodetect(mut self) -> CecConnectionResult<CecConnection> {
-        let mut cfg: libcec_configuration = (&self).into();
-        // Consume self.*_callback and build CecCallbacks from those
-        let pinned_callbacks = Box::pin(CecCallbacks {
-            key_press_callback: self.key_press_callback.take(),
-            command_received_callback: self.command_received_callback.take(),
-            log_message_callbacks: self.log_message_callback.take(),
-        });
-        let rust_callbacks_as_void_ptr = &*pinned_callbacks as *const _ as *mut _;
-        let open_timeout = self.open_timeout.as_millis() as u32;
-        let connection = CecConnection(
-            self,
-            unsafe { libcec_initialise(&mut cfg) },
-            pinned_callbacks,
-        );
-        if connection.1 as usize == 0 {
-            return Err(CecConnectionResultError::LibInitFailed);
-        }
-
+    fn detect_port(connection: &CecConnection) -> CecConnectionResult<CString> {
         let mut devices: [libcec_sys::cec_adapter_descriptor; 10] = unsafe { std::mem::zeroed() };
         let num_devices = unsafe {
             libcec_sys::libcec_detect_adapters(
@@ -1402,34 +1398,16 @@ impl CecConnectionCfg {
         };
 
         if num_devices < 0 {
-            panic!("no devices found")
+            Err(CecConnectionResultError::NoAdapterFound)
+        } else {
+            let port = devices[0]
+                .strComName
+                .into_iter()
+                .flat_map(u8::try_from)
+                .filter(|x| *x != 0)
+                .collect::<Vec<u8>>();
+            Ok(CString::new(port)?)
         }
-
-        if unsafe { libcec_open(connection.1, devices[0].strComName.as_ptr(), open_timeout) } == 0 {
-            return Err(CecConnectionResultError::AdapterOpenFailed);
-        }
-
-        #[cfg(abi4)]
-        let callback_ret = unsafe {
-            libcec_sys::libcec_enable_callbacks(
-                connection.1,
-                rust_callbacks_as_void_ptr,
-                &mut CALLBACKS,
-            )
-        };
-        #[cfg(not(abi4))]
-        let callback_ret = unsafe {
-            libcec_sys::libcec_set_callbacks(
-                connection.1,
-                &mut CALLBACKS,
-                rust_callbacks_as_void_ptr,
-            )
-        };
-        if callback_ret == 0 {
-            return Err(CecConnectionResultError::CallbackRegistrationFailed);
-        }
-
-        Ok(connection)
     }
 }
 
@@ -1449,7 +1427,7 @@ impl From<&CecConnectionCfg> for libcec_configuration {
             cfg = mem::zeroed::<libcec_configuration>();
             libcec_clear_configuration(&mut cfg);
         }
-        cfg.clientVersion = LIBCEC_VERSION_CURRENT;
+        cfg.clientVersion = LIBCEC_VERSION_CURRENT as _;
         cfg.strDeviceName = first_n::<{ LIBCEC_OSD_NAME_SIZE as usize }>(&config.device_name);
         cfg.deviceTypes = config.device_types.clone().into();
         if let Some(v) = config.physical_address {
@@ -1509,5 +1487,3 @@ impl From<&CecConnectionCfg> for libcec_configuration {
         cfg
     }
 }
-
-// unsafe impl Send for CecConnection{}
