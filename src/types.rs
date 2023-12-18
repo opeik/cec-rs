@@ -1,13 +1,9 @@
 use std::ffi::c_int;
 
+use cec_sys::*;
 use enum_repr::EnumRepr;
-use libcec_sys::*;
 
 use crate::TryFromCecLogicalAddressesError;
-
-//
-// Enums
-//
 
 #[EnumRepr(type = "cec_abort_reason")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

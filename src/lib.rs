@@ -1,29 +1,11 @@
-extern crate enum_repr_derive;
-#[macro_use]
-extern crate derive_builder;
-
-#[cfg(abi4)]
-mod enums4;
-#[cfg(abi4)]
-pub use enums4::*;
-#[cfg(abi5)]
-mod enums5;
-#[cfg(abi5)]
-pub use crate::enums5::*;
-
-#[cfg(abi6)]
-mod enums6;
-
-#[cfg(abi6)]
-pub use crate::enums6::*;
-#[cfg(all(not(abi4), not(abi5), not(abi6)))]
-compile_error!("BUG: libcec abi not detected");
+mod convert;
+mod types;
 
 use std::{
     collections::HashSet,
     convert::{TryFrom, TryInto},
     ffi::{c_int, CStr, CString},
-    fmt, mem,
+    fmt,
     os::raw::c_void,
     pin::Pin,
     result,
@@ -31,53 +13,12 @@ use std::{
 };
 
 use arrayvec::ArrayVec;
-use libcec_sys::*;
-use log::{trace, warn};
-use num_traits::ToPrimitive;
+use cec_sys::*;
+use derive_builder::Builder;
+use log::trace;
 use thiserror::Error;
 
-#[cfg(test)]
-mod tests {
-
-    use std::env;
-
-    use libcec_sys::CEC_LIB_VERSION_MAJOR;
-
-    #[test]
-    fn test_abi_ci() {
-        if env::var("CI").is_err() {
-            // Not running in CI
-            return;
-        }
-        let expected_abi = env::var("EXPECTED_LIBCEC_VERSION_MAJOR")
-            .expect("CI needs to specify EXPECTED_LIBCEC_VERSION_MAJOR");
-
-        assert_eq!(
-            CEC_LIB_VERSION_MAJOR,
-            expected_abi
-                .parse()
-                .expect("Invalid EXPECTED_LIBCEC_VERSION_MAJOR: could not parse to number")
-        );
-    }
-
-    #[cfg(abi4)]
-    #[test]
-    fn test_abi4() {
-        assert_eq!(CEC_LIB_VERSION_MAJOR, 4);
-    }
-
-    #[cfg(abi5)]
-    #[test]
-    fn test_abi5() {
-        assert_eq!(CEC_LIB_VERSION_MAJOR, 5);
-    }
-
-    #[cfg(abi6)]
-    #[test]
-    fn test_abi6() {
-        assert_eq!(CEC_LIB_VERSION_MAJOR, 6);
-    }
-}
+pub use crate::types::*;
 
 fn first_n<const N: usize>(string: &str) -> [::std::os::raw::c_char; N] {
     let mut data: [::std::os::raw::c_char; N] = [0; N];
@@ -87,42 +28,6 @@ fn first_n<const N: usize>(string: &str) -> [::std::os::raw::c_char; N] {
         *dst = *src as _;
     }
     data
-}
-
-#[cfg(test)]
-mod util_tests {
-    use super::*;
-
-    #[allow(clippy::unnecessary_cast)]
-    #[test]
-    fn test_first_3() {
-        assert_eq!(
-            [b's' as _, b'a' as _, b'm' as _] as [::std::os::raw::c_char; 3],
-            first_n::<3>("sample")
-        );
-        assert_eq!(
-            [b's' as _, b'a' as _, 0 as _] as [::std::os::raw::c_char; 3],
-            first_n::<3>("sa")
-        );
-        assert_eq!(
-            [0 as _, 0 as _, 0 as _] as [::std::os::raw::c_char; 3],
-            first_n::<3>("")
-        );
-    }
-
-    #[allow(clippy::unnecessary_cast)]
-    #[test]
-    fn test_first_7() {
-        assert_eq!(
-            [b's' as _, b'a' as _, b'm' as _, b'p' as _, b'l' as _, b'e' as _, 0]
-                as [::std::os::raw::c_char; 7],
-            first_n::<7>("sample")
-        );
-    }
-    #[test]
-    fn test_first_0() {
-        assert_eq!([] as [::std::os::raw::c_char; 0], first_n::<0>("sample"));
-    }
 }
 
 /// CecLogicalAddress which does not allow Unknown variant
@@ -138,18 +43,6 @@ impl KnownCecLogicalAddress {
     }
 }
 
-impl From<KnownCecLogicalAddress> for CecLogicalAddress {
-    fn from(address: KnownCecLogicalAddress) -> Self {
-        address.0
-    }
-}
-
-impl From<KnownCecLogicalAddress> for cec_logical_address {
-    fn from(address: KnownCecLogicalAddress) -> Self {
-        address.0.repr()
-    }
-}
-
 /// CecLogicalAddress which does not allow Unknown and Unregistered variants
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct KnownAndRegisteredCecLogicalAddress(CecLogicalAddress);
@@ -160,18 +53,6 @@ impl KnownAndRegisteredCecLogicalAddress {
             CecLogicalAddress::Unknown | CecLogicalAddress::Unregistered => None,
             valid_address => Some(Self(valid_address)),
         }
-    }
-}
-
-impl From<KnownAndRegisteredCecLogicalAddress> for CecLogicalAddress {
-    fn from(address: KnownAndRegisteredCecLogicalAddress) -> Self {
-        address.0
-    }
-}
-
-impl From<KnownAndRegisteredCecLogicalAddress> for cec_logical_address {
-    fn from(address: KnownAndRegisteredCecLogicalAddress) -> Self {
-        address.0.repr()
     }
 }
 
@@ -189,142 +70,24 @@ impl TryFrom<KnownCecLogicalAddress> for KnownAndRegisteredCecLogicalAddress {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CecDatapacket(pub ArrayVec<u8, 64>);
 
-impl From<CecDatapacket> for cec_datapacket {
-    fn from(datapacket: CecDatapacket) -> cec_datapacket {
-        let mut data = [0u8; 64];
-        data[..datapacket.0.len()].clone_from_slice(datapacket.0.as_slice());
-        cec_datapacket {
-            data,
-            size: datapacket.0.len() as u8,
-        }
-    }
-}
-
-impl From<cec_datapacket> for CecDatapacket {
-    fn from(datapacket: cec_datapacket) -> CecDatapacket {
-        let end = datapacket.size as usize;
-        let mut packet = CecDatapacket(ArrayVec::new());
-        packet
-            .0
-            .try_extend_from_slice(&datapacket.data[..end])
-            .unwrap();
-        packet
-    }
-}
-
-#[cfg(test)]
-mod datapacket_tests {
-    use super::*;
-
-    /// Assert that
-    /// 1) sizes match
-    /// 2) and that the elements of CecDatapacket match the first elements of packet2
-    fn assert_eq_packet(packet: CecDatapacket, packet2: cec_datapacket) {
-        assert_eq!(packet.0.len(), packet2.size.try_into().unwrap());
-        assert!(packet
-            .0
-            .as_slice()
-            .iter()
-            .eq(packet2.data[..(packet2.size as usize)].iter()));
-    }
-
-    fn assert_eq_ffi_packet(packet: cec_datapacket, packet2: cec_datapacket) {
-        assert_eq!(packet.size, packet2.size);
-        assert!(&packet.data.iter().eq(packet2.data.iter()));
-    }
-
-    #[test]
-    fn test_from_ffi_full_size() {
-        let mut data_buffer = [50; 64];
-        data_buffer[0] = 5;
-        data_buffer[1] = 7;
-        data_buffer[3] = 99;
-        let ffi_packet = cec_datapacket {
-            data: data_buffer,
-            size: 64,
-        };
-        let packet: CecDatapacket = ffi_packet.try_into().unwrap();
-        assert_eq_packet(packet, ffi_packet);
-    }
-
-    #[test]
-    fn test_from_ffi_not_full() {
-        let mut data_buffer = [50; 64];
-        data_buffer[0] = 5;
-        data_buffer[1] = 7;
-        data_buffer[3] = 99;
-        let ffi_packet = cec_datapacket {
-            data: data_buffer,
-            size: 3,
-        };
-        let packet: CecDatapacket = ffi_packet.try_into().unwrap();
-        assert_eq!(packet.0.as_slice(), &[5, 7, 50]);
-    }
-
-    #[test]
-    fn test_to_ffi_not_full() {
-        let mut a = ArrayVec::new();
-        a.push(2);
-        a.push(50);
-        let packet = CecDatapacket(a);
-        let ffi_packet: cec_datapacket = packet.try_into().unwrap();
-        let mut expected = cec_datapacket {
-            size: 2,
-            data: [0; 64],
-        };
-        expected.data[0] = 2;
-        expected.data[1] = 50;
-        assert_eq_ffi_packet(ffi_packet, expected);
-    }
-
-    #[test]
-    fn test_to_ffi_full() {
-        let mut a = ArrayVec::from([99; 64]);
-        a.as_mut_slice()[1] = 50;
-        let packet = CecDatapacket(a);
-        let ffi_packet: cec_datapacket = packet.try_into().unwrap();
-        let mut expected = cec_datapacket {
-            size: 64,
-            data: [99; 64],
-        };
-        expected.data[1] = 50;
-        assert_eq_ffi_packet(ffi_packet, expected);
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct CecCommand {
-    #[doc = "< the logical address of the initiator of this message"]
+    /// The logical address of the initiator of this message.
     pub initiator: CecLogicalAddress,
-    #[doc = "< the logical address of the destination of this message"]
+    /// The logical address of the destination of this message.
     pub destination: CecLogicalAddress,
-    #[doc = "< 1 when the ACK bit is set, 0 otherwise"]
+    /// 1 when the ACK bit is set, 0 otherwise.
     pub ack: bool,
-    #[doc = "< 1 when the EOM bit is set, 0 otherwise"]
+    /// 1 when the EOM bit is set, 0 otherwise.
     pub eom: bool,
-    #[doc = "< the opcode of this message"]
+    /// The opcode of this message.
     pub opcode: CecOpcode,
-    #[doc = "< the parameters attached to this message"]
+    /// The parameters attached to this message.
     pub parameters: CecDatapacket,
-    #[doc = "< 1 when an opcode is set, 0 otherwise (POLL message)"]
+    /// 1 when an opcode is set, 0 otherwise (POLL message).
     pub opcode_set: bool,
-    #[doc = "< the timeout to use in ms"]
+    /// The timeout to use in ms.
     pub transmit_timeout: Duration,
-}
-
-impl From<CecCommand> for cec_command {
-    fn from(command: CecCommand) -> cec_command {
-        cec_command {
-            initiator: command.initiator.repr(),
-            destination: command.destination.repr(),
-            ack: command.ack.into(),
-            eom: command.eom.into(),
-            opcode: command.opcode.repr(),
-            parameters: command.parameters.into(),
-            opcode_set: command.opcode_set.into(),
-            transmit_timeout: command.transmit_timeout.as_millis() as i32,
-        }
-    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Error)]
@@ -341,12 +104,12 @@ impl core::convert::TryFrom<cec_command> for CecCommand {
     type Error = TryFromCecCommandError;
 
     fn try_from(command: cec_command) -> std::result::Result<Self, Self::Error> {
-        let opcode = CecOpcode::from_repr(command.opcode)
-            .ok_or_else(|| TryFromCecCommandError::UnknownOpcode)?;
+        let opcode =
+            CecOpcode::from_repr(command.opcode).ok_or(TryFromCecCommandError::UnknownOpcode)?;
         let initiator = CecLogicalAddress::from_repr(command.initiator)
-            .ok_or_else(|| TryFromCecCommandError::UnknownInitiator)?;
+            .ok_or(TryFromCecCommandError::UnknownInitiator)?;
         let destination = CecLogicalAddress::from_repr(command.destination)
-            .ok_or_else(|| TryFromCecCommandError::UnknownDestination)?;
+            .ok_or(TryFromCecCommandError::UnknownDestination)?;
         let parameters = command.parameters.into();
         let transmit_timeout = Duration::from_millis(if command.transmit_timeout < 0 {
             0
@@ -366,100 +129,6 @@ impl core::convert::TryFrom<cec_command> for CecCommand {
     }
 }
 
-#[cfg(test)]
-mod command_tests {
-    use super::*;
-
-    fn assert_eq_ffi_packet(packet: cec_datapacket, packet2: cec_datapacket) {
-        assert_eq!(packet.size, packet2.size);
-        assert!(&packet.data.iter().eq(packet2.data.iter()));
-    }
-
-    fn assert_eq_ffi_command(actual: cec_command, expected: cec_command) {
-        assert_eq!(actual.ack, expected.ack);
-        assert_eq!(actual.destination, expected.destination);
-        assert_eq!(actual.eom, expected.eom);
-        assert_eq!(actual.initiator, expected.initiator);
-        assert_eq!(actual.opcode, expected.opcode);
-        assert_eq!(actual.opcode_set, expected.opcode_set);
-        assert_eq_ffi_packet(actual.parameters, expected.parameters);
-        assert_eq!(actual.transmit_timeout, expected.transmit_timeout);
-    }
-
-    fn assert_eq_command(actual: CecCommand, expected: CecCommand) {
-        assert_eq!(actual.ack, expected.ack);
-        assert_eq!(actual.destination, expected.destination);
-        assert_eq!(actual.eom, expected.eom);
-        assert_eq!(actual.initiator, expected.initiator);
-        assert_eq!(actual.opcode, expected.opcode);
-        assert_eq!(actual.opcode_set, expected.opcode_set);
-        assert_eq!(actual.parameters.0, expected.parameters.0);
-        assert_eq!(actual.transmit_timeout, expected.transmit_timeout);
-    }
-
-    #[test]
-    fn test_to_ffi() {
-        let mut parameters = ArrayVec::new();
-        parameters.push(2);
-        parameters.push(3);
-        let command = CecCommand {
-            opcode: CecOpcode::ClearAnalogueTimer,
-            initiator: CecLogicalAddress::Playbackdevice1,
-            destination: CecLogicalAddress::Playbackdevice2,
-            parameters: CecDatapacket(parameters.clone()),
-            transmit_timeout: Duration::from_secs(65),
-            ack: false,
-            eom: true,
-            opcode_set: true,
-        };
-        let ffi_command: cec_command = command.into();
-        assert_eq_ffi_command(
-            ffi_command,
-            cec_command {
-                ack: 0,
-                destination: CecLogicalAddress::Playbackdevice2.into(),
-                eom: 1,
-                initiator: CecLogicalAddress::Playbackdevice1.into(),
-                opcode: CecOpcode::ClearAnalogueTimer.into(),
-                opcode_set: 1,
-                parameters: CecDatapacket(parameters).into(), // OK to use here, verified in CecDatapacket unit tests
-                transmit_timeout: 65_000,
-            },
-        )
-    }
-
-    #[test]
-    fn test_from_ffi() {
-        let mut parameters = ArrayVec::new();
-        parameters.push(2);
-        parameters.push(3);
-        let ffi_command = cec_command {
-            ack: 0,
-            destination: CecLogicalAddress::Playbackdevice2.into(),
-            eom: 1,
-            initiator: CecLogicalAddress::Playbackdevice1.into(),
-            opcode: CecOpcode::ClearAnalogueTimer.into(),
-            opcode_set: 1,
-            parameters: CecDatapacket(parameters.clone()).into(), // OK to use here, verified in CecDatapacket unit tests
-            transmit_timeout: 65_000,
-        };
-        let command: CecCommand = ffi_command.try_into().unwrap();
-        assert_eq_command(
-            command,
-            CecCommand {
-                ack: false,
-                destination: CecLogicalAddress::Playbackdevice2,
-                eom: true,
-                initiator: CecLogicalAddress::Playbackdevice1,
-                opcode: CecOpcode::ClearAnalogueTimer,
-                opcode_set: true,
-                parameters: CecDatapacket(parameters),
-                transmit_timeout: Duration::from_millis(65000),
-            },
-        )
-    }
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Error)]
 pub enum TryFromCecLogMessageError {
     #[error("message parse error")]
@@ -474,11 +143,11 @@ pub enum TryFromCecLogMessageError {
 
 #[derive(Debug, Clone)]
 pub struct CecLogMessage {
-    #[doc = "the actual message"]
+    /// The actual message.
     pub message: String,
-    #[doc = "log level of the message"]
+    /// Log level of the message.
     pub level: CecLogLevel,
-    #[doc = "duration since connection was established"]
+    /// Duration since connection was established.
     pub time: Duration,
 }
 
@@ -492,7 +161,7 @@ impl core::convert::TryFrom<cec_log_message> for CecLogMessage {
             .map_err(|_| TryFromCecLogMessageError::MessageParseError)?
             .to_owned();
         let level = CecLogLevel::from_repr(log_message.level)
-            .ok_or_else(|| TryFromCecLogMessageError::LogLevelParseError)?;
+            .ok_or(TryFromCecLogMessageError::LogLevelParseError)?;
         let time = log_message
             .time
             .try_into()
@@ -581,7 +250,7 @@ impl TryFrom<cec_logical_addresses> for CecLogicalAddresses {
     type Error = TryFromCecLogicalAddressesError;
     fn try_from(addresses: cec_logical_addresses) -> Result<Self, Self::Error> {
         let primary = CecLogicalAddress::from_repr(addresses.primary)
-            .ok_or_else(|| TryFromCecLogicalAddressesError::InvalidPrimaryAddress)?;
+            .ok_or(TryFromCecLogicalAddressesError::InvalidPrimaryAddress)?;
         let primary = KnownCecLogicalAddress::new(primary)
             .ok_or(TryFromCecLogicalAddressesError::UnknownPrimaryAddress)?;
 
@@ -603,23 +272,6 @@ impl TryFrom<cec_logical_addresses> for CecLogicalAddresses {
     }
 }
 
-impl From<CecLogicalAddresses> for cec_logical_addresses {
-    fn from(addresses: CecLogicalAddresses) -> cec_logical_addresses {
-        // cec_logical_addresses.addresses is a 'mask'
-        // cec_logical_addresses.addresses[logical_address value] = 1 when mask contains the address
-        let mut data = cec_logical_addresses {
-            primary: addresses.primary.into(),
-            addresses: [0; 16],
-        };
-        for known_address in addresses.addresses {
-            let address: CecLogicalAddress = known_address.into();
-            let address_mask_position = address.repr();
-            data.addresses[address_mask_position as usize] = 1;
-        }
-        data
-    }
-}
-
 impl Default for CecLogicalAddresses {
     fn default() -> Self {
         CecLogicalAddresses {
@@ -629,166 +281,11 @@ impl Default for CecLogicalAddresses {
     }
 }
 
-#[cfg(test)]
-mod logical_addresses_tests {
-    use super::*;
-
-    #[test]
-    fn test_known_address() {
-        assert_eq!(
-            Some(KnownCecLogicalAddress(CecLogicalAddress::Audiosystem)),
-            KnownCecLogicalAddress::new(CecLogicalAddress::Audiosystem)
-        );
-        assert_eq!(
-            Some(KnownCecLogicalAddress(CecLogicalAddress::Unregistered)),
-            KnownCecLogicalAddress::new(CecLogicalAddress::Unregistered)
-        );
-        assert_eq!(
-            None,
-            KnownCecLogicalAddress::new(CecLogicalAddress::Unknown)
-        );
-    }
-
-    #[test]
-    fn test_known_and_registered_address() {
-        assert_eq!(
-            Some(KnownAndRegisteredCecLogicalAddress(
-                CecLogicalAddress::Audiosystem
-            )),
-            KnownAndRegisteredCecLogicalAddress::new(CecLogicalAddress::Audiosystem)
-        );
-        assert_eq!(
-            None,
-            KnownAndRegisteredCecLogicalAddress::new(CecLogicalAddress::Unregistered)
-        );
-        assert_eq!(
-            None,
-            KnownAndRegisteredCecLogicalAddress::new(CecLogicalAddress::Unknown)
-        );
-    }
-
-    #[test]
-    fn test_to_ffi_no_address() {
-        let ffi_addresses: cec_logical_addresses = CecLogicalAddresses::default().into();
-        assert_eq!(
-            ffi_addresses.primary,
-            CecLogicalAddress::Unregistered.into()
-        );
-        assert_eq!(ffi_addresses.addresses, [0; 16]);
-
-        // try converting back
-        let rust_addresses = CecLogicalAddresses::try_from(ffi_addresses).unwrap();
-        assert_eq!(
-            rust_addresses.primary,
-            KnownCecLogicalAddress(CecLogicalAddress::Unregistered)
-        );
-        assert!(rust_addresses.addresses.is_empty());
-    }
-
-    #[test]
-    fn test_to_ffi_one_address() {
-        let ffi_addresses: cec_logical_addresses = CecLogicalAddresses::with_only_primary(
-            &KnownCecLogicalAddress::new(CecLogicalAddress::Playbackdevice1).unwrap(),
-        )
-        .into();
-        assert_eq!(
-            ffi_addresses.primary,
-            CecLogicalAddress::Playbackdevice1.into()
-        );
-        // addresses mask should be all zeros
-        assert_eq!(ffi_addresses.addresses, [0; 16]);
-
-        // try converting back
-        let rust_addresses = CecLogicalAddresses::try_from(ffi_addresses).unwrap();
-        assert_eq!(
-            rust_addresses.primary,
-            KnownCecLogicalAddress(CecLogicalAddress::Playbackdevice1)
-        );
-        assert!(rust_addresses.addresses.is_empty());
-    }
-
-    #[test]
-    fn test_to_ffi_three_address() {
-        let mut others = HashSet::new();
-        others.insert(
-            KnownAndRegisteredCecLogicalAddress::new(CecLogicalAddress::Playbackdevice2).unwrap(),
-        );
-        others.insert(
-            KnownAndRegisteredCecLogicalAddress::new(CecLogicalAddress::Audiosystem).unwrap(),
-        );
-
-        let non_ffi = CecLogicalAddresses::with_primary_and_addresses(
-            &KnownCecLogicalAddress::new(CecLogicalAddress::Playbackdevice1).unwrap(),
-            &others,
-        )
-        .unwrap();
-
-        let ffi_addresses: cec_logical_addresses = non_ffi.clone().into();
-
-        assert_eq!(
-            ffi_addresses.primary,
-            CecLogicalAddress::Playbackdevice1.into()
-        );
-        let ffi_secondary = ffi_addresses.addresses;
-        const PRIMARY_INDEX: usize = CecLogicalAddress::Playbackdevice1 as usize;
-        const PLAYBACKDEVICE2_INDEX: usize = CecLogicalAddress::Playbackdevice2 as usize;
-        const AUDIOSYSTEM_INDEX: usize = CecLogicalAddress::Audiosystem as usize;
-        for (mask_index, mask_value) in ffi_secondary.iter().enumerate() {
-            match mask_index {
-                // Note: also the primary address is in the mask even though it was not provided originally
-                PLAYBACKDEVICE2_INDEX | AUDIOSYSTEM_INDEX | PRIMARY_INDEX => {
-                    assert_eq!(
-                        1, *mask_value,
-                        "index {}, non-ffi addresses {:?}, ffi addresses {:?}",
-                        mask_index, non_ffi, ffi_addresses
-                    )
-                }
-                _ => assert_eq!(0, *mask_value),
-            }
-        }
-
-        // try converting back
-        let rust_addresses = CecLogicalAddresses::try_from(ffi_addresses).unwrap();
-        assert_eq!(rust_addresses.primary, non_ffi.primary);
-        assert_eq!(rust_addresses.addresses, non_ffi.addresses);
-    }
-
-    #[test]
-    fn test_unregistered_primary_no_others() {
-        let expected = Some(CecLogicalAddresses::with_only_primary(
-            &KnownCecLogicalAddress::new(CecLogicalAddress::Unregistered).unwrap(),
-        ));
-        assert_eq!(
-            expected,
-            CecLogicalAddresses::with_primary_and_addresses(
-                &KnownCecLogicalAddress::new(CecLogicalAddress::Unregistered).unwrap(),
-                &HashSet::new(),
-            )
-        );
-    }
-
-    #[test]
-    fn test_unregistered_primary_some_others() {
-        let mut others = HashSet::new();
-        others.insert(
-            KnownAndRegisteredCecLogicalAddress::new(CecLogicalAddress::Audiosystem).unwrap(),
-        );
-        // If there are others, there should be also primary
-        assert_eq!(
-            None,
-            CecLogicalAddresses::with_primary_and_addresses(
-                &KnownCecLogicalAddress::new(CecLogicalAddress::Unregistered).unwrap(),
-                &others,
-            )
-        );
-    }
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct CecKeypress {
-    #[doc = "< the keycode"]
+    /// The keycode.
     pub keycode: CecUserControlCode,
-    #[doc = "< the duration of the keypress"]
+    /// The duration of the keypress.
     pub duration: Duration,
 }
 
@@ -802,40 +299,11 @@ impl core::convert::TryFrom<cec_keypress> for CecKeypress {
     type Error = TryFromCecKeyPressError;
     fn try_from(keypress: cec_keypress) -> std::result::Result<Self, Self::Error> {
         let keycode = CecUserControlCode::from_repr(keypress.keycode)
-            .ok_or_else(|| TryFromCecKeyPressError::UnknownKeycode)?;
+            .ok_or(TryFromCecKeyPressError::UnknownKeycode)?;
         Ok(CecKeypress {
             keycode,
             duration: Duration::from_millis(keypress.duration.into()),
         })
-    }
-}
-
-#[cfg(test)]
-mod keypress_tests {
-    use libcec_sys::CEC_USER_CONTROL_CODE_UP;
-
-    use super::*;
-
-    #[test]
-    fn test_keypress_from_ffi_known_code() {
-        let keypress: CecKeypress = cec_keypress {
-            keycode: CEC_USER_CONTROL_CODE_UP,
-            duration: 300,
-        }
-        .try_into()
-        .unwrap();
-        assert_eq!(keypress.keycode, CecUserControlCode::Up);
-        assert_eq!(keypress.duration, Duration::from_millis(300));
-    }
-
-    #[test]
-    fn test_keypress_from_ffi_unknown_code() {
-        let keypress: Result<CecKeypress, TryFromCecKeyPressError> = cec_keypress {
-            keycode: 666,
-            duration: 300,
-        }
-        .try_into();
-        assert_eq!(keypress, Err(TryFromCecKeyPressError::UnknownKeycode));
     }
 }
 
@@ -847,41 +315,6 @@ impl CecDeviceTypeVec {
         let mut inner = ArrayVec::<_, 5>::new();
         inner.push(type1);
         CecDeviceTypeVec(inner)
-    }
-}
-
-impl From<CecDeviceTypeVec> for cec_device_type_list {
-    fn from(device_types: CecDeviceTypeVec) -> cec_device_type_list {
-        let mut devices = cec_device_type_list {
-            types: [CecDeviceType::Reserved.repr(); 5],
-        };
-        for (i, type_id) in device_types.0.iter().enumerate() {
-            devices.types[i] = (*type_id).repr();
-        }
-        devices
-    }
-}
-
-#[cfg(test)]
-mod cec_device_type_vec_tests {
-    use super::*;
-
-    #[test]
-    fn test_to_ffi_empty() {
-        let devices = ArrayVec::new();
-        let ffi_devices: cec_device_type_list = CecDeviceTypeVec(devices).into();
-        assert_eq!(ffi_devices.types, [CecDeviceType::Reserved.into(); 5]);
-    }
-
-    #[test]
-    fn test_to_ffi_two_devices() {
-        let mut devices = ArrayVec::new();
-        devices.push(CecDeviceType::PlaybackDevice);
-        devices.push(CecDeviceType::RecordingDevice);
-        let ffi_devices: cec_device_type_list = CecDeviceTypeVec(devices).into();
-        assert_eq!(ffi_devices.types[0], CecDeviceType::PlaybackDevice.into());
-        assert_eq!(ffi_devices.types[1], CecDeviceType::RecordingDevice.into());
-        assert_eq!(ffi_devices.types[2..], [CecDeviceType::Reserved.into(); 3]);
     }
 }
 
@@ -991,82 +424,83 @@ pub struct CecConnectionCfg {
     //
     pub device_name: String,
 
-    #[doc = "< the device type(s) to use on the CEC bus for libCEC"]
+    ///< the device type(s) to use on the CEC bus for libCEC.
     pub device_types: CecDeviceTypeVec,
 
     // optional cec_configuration items follow
-    #[doc = "< the physical address of the CEC adapter"]
+    ///< the physical address of the CEC adapter.
     #[builder(default, setter(strip_option))]
     pub physical_address: Option<u16>,
 
-    #[doc = "< the logical address of the device to which the adapter is connected. only used when iPhysicalAddress = 0 or when the adapter doesn't support autodetection"]
+    ///< the logical address of the device to which the adapter is connected. only used when iPhysicalAddress = 0 or when the adapter doesn't support autodetection.
     #[builder(default, setter(strip_option))]
     pub base_device: Option<CecLogicalAddress>,
 
-    #[doc = "< the HDMI port to which the adapter is connected. only used when iPhysicalAddress = 0 or when the adapter doesn't support autodetection"]
+    ///< the HDMI port to which the adapter is connected. only used when iPhysicalAddress = 0 or when the adapter doesn't support autodetection.
     #[builder(default, setter(strip_option))]
     pub hdmi_port: Option<u8>,
 
-    #[doc = "< override the vendor ID of the TV. leave this untouched to autodetect"]
+    ///< override the vendor ID of the TV. leave this untouched to autodetect.
     #[builder(default, setter(strip_option))]
     pub tv_vendor: Option<u32>,
 
-    #[doc = "< list of devices to wake when initialising libCEC or when calling PowerOnDevices() without any parameter."]
+    ///< list of devices to wake when initialising libCEC or when calling PowerOnDevices() without any parameter..
     #[builder(default, setter(strip_option))]
     pub wake_devices: Option<CecLogicalAddresses>,
 
-    #[doc = "< list of devices to power off when calling StandbyDevices() without any parameter."]
+    /// List of devices to power off when calling StandbyDevices() without any parameter.
     #[builder(default, setter(strip_option))]
     pub power_off_devices: Option<CecLogicalAddresses>,
 
-    #[doc = "< true to get the settings from the ROM (if set, and a v2 ROM is present), false to use these settings."]
+    /// True to get the settings from the ROM (if set, and a v2 ROM is present), false to use these settings.
     #[builder(default, setter(strip_option))]
     pub get_settings_from_rom: Option<bool>,
 
-    #[doc = "< make libCEC the active source on the bus when starting the player application"]
+    /// Make libCEC the active source on the bus when starting the player application.
     #[builder(default, setter(strip_option))]
     pub activate_source: Option<bool>,
 
-    #[doc = "< put this PC in standby mode when the TV is switched off. only used when bShutdownOnStandby = 0"]
+    /// Put this PC in standby mode when the TV is switched off.
+    /// Only used when `bShutdownOnStandby` = 0.
     #[builder(default, setter(strip_option))]
     pub power_off_on_standby: Option<bool>,
 
-    #[doc = "< the menu language used by the client. 3 character ISO 639-2 country code. see http://http://www.loc.gov/standards/iso639-2/ added in 1.6.2"]
+    /// The menu language used by the client. 3 character ISO 639-2 country code. see http://http://www.loc.gov/standards/iso639-2/ added in 1.6.2.
     #[builder(default, setter(strip_option))]
     pub device_language: Option<String>,
 
-    #[doc = "< won't allocate a CCECClient when starting the connection when set (same as monitor mode). added in 1.6.3"]
+    /// Won't allocate a CCECClient when starting the connection when set (same as monitor mode). added in 1.6.3.
     #[builder(default, setter(strip_option))]
     pub monitor_only: Option<bool>,
 
-    #[doc = "< type of the CEC adapter that we're connected to. added in 1.8.2"]
+    /// Type of the CEC adapter that we're connected to. added in 1.8.2.
     #[builder(default, setter(strip_option))]
     pub adapter_type: Option<CecAdapterType>,
 
-    #[doc = "< key code that initiates combo keys. defaults to CEC_USER_CONTROL_CODE_F1_BLUE. CEC_USER_CONTROL_CODE_UNKNOWN to disable. added in 2.0.5"]
+    /// key code that initiates combo keys. defaults to CEC_USER_CONTROL_CODE_F1_BLUE. CEC_USER_CONTROL_CODE_UNKNOWN to disable. added in 2.0.5.
     #[builder(default, setter(strip_option))]
     pub combo_key: Option<CecUserControlCode>,
 
-    #[doc = "< timeout until the combo key is sent as normal keypress"]
+    /// Timeout until the combo key is sent as normal keypress.
     #[builder(default, setter(strip_option))]
     pub combo_key_timeout: Option<Duration>,
 
-    #[doc = "< rate at which buttons autorepeat. 0 means rely on CEC device"]
+    /// Rate at which buttons autorepeat. 0 means rely on CEC device.
     #[builder(default)]
     #[builder(setter(strip_option))]
     pub button_repeat_rate: Option<Duration>,
 
-    #[doc = "< duration after last update until a button is considered released"]
+    /// Duration after last update until a button is considered released.
     #[builder(default)]
     #[builder(setter(strip_option))]
     pub button_release_delay: Option<Duration>,
 
-    #[doc = "< prevent double taps within this timeout. defaults to 200ms. added in 4.0.0"]
+    /// Prevent double taps within this timeout. defaults to 200ms. added in 4.0.0.
     #[builder(default)]
     #[builder(setter(strip_option))]
     pub double_tap_timeout: Option<Duration>,
 
-    #[doc = "< set to 1 to automatically waking an AVR when the source is activated. added in 4.0.0"]
+    /// Set to 1 to automatically waking an AVR when the source is activated. added in 4.0.0.
     #[builder(default)]
     #[builder(setter(strip_option))]
     pub autowake_avr: Option<bool>,
@@ -1302,9 +736,9 @@ impl CecConnectionCfg {
     /// # Errors
     ///
     /// Error is returned in following cases
-    /// - LibInitFailed: libcec_sys::libcec_initialise fails
-    /// - AdapterOpenFailed: libcec_sys::libcec_open fails
-    /// - CallbackRegistrationFailed: libcec_sys::libcec_enable_callbacks fails
+    /// - LibInitFailed: cec_sys::libcec_initialise fails
+    /// - AdapterOpenFailed: cec_sys::libcec_open fails
+    /// - CallbackRegistrationFailed: cec_sys::libcec_enable_callbacks fails
     ///
     /// # Panics
     ///
@@ -1332,9 +766,15 @@ impl CecConnectionCfg {
             return Err(CecConnectionResultError::LibInitFailed);
         }
 
-        let resolved_port = match Self::detect_port(&connection) {
-            Ok(x) => x,
-            Err(e) => return Err(e),
+        let resolved_port = match autodetect {
+            true => match Self::detect_port(&connection) {
+                Ok(x) => x,
+                Err(e) => return Err(e),
+            },
+            false => match port {
+                Some(x) => CString::new(x)?,
+                None => return Err(CecConnectionResultError::PortMissing),
+            },
         };
 
         if unsafe { libcec_open(connection.1, resolved_port.as_ptr(), open_timeout) } == 0 {
@@ -1343,7 +783,7 @@ impl CecConnectionCfg {
 
         #[cfg(abi4)]
         let callback_ret = unsafe {
-            libcec_sys::libcec_enable_callbacks(
+            cec_sys::libcec_enable_callbacks(
                 connection.1,
                 rust_callbacks_as_void_ptr,
                 &mut CALLBACKS,
@@ -1351,11 +791,7 @@ impl CecConnectionCfg {
         };
         #[cfg(not(abi4))]
         let callback_ret = unsafe {
-            libcec_sys::libcec_set_callbacks(
-                connection.1,
-                &mut CALLBACKS,
-                rust_callbacks_as_void_ptr,
-            )
+            cec_sys::libcec_set_callbacks(connection.1, &mut CALLBACKS, rust_callbacks_as_void_ptr)
         };
         if callback_ret == 0 {
             return Err(CecConnectionResultError::CallbackRegistrationFailed);
@@ -1365,9 +801,9 @@ impl CecConnectionCfg {
     }
 
     fn detect_port(connection: &CecConnection) -> CecConnectionResult<CString> {
-        let mut devices: [libcec_sys::cec_adapter_descriptor; 10] = unsafe { std::mem::zeroed() };
+        let mut devices: [cec_sys::cec_adapter_descriptor; 10] = unsafe { std::mem::zeroed() };
         let num_devices = unsafe {
-            libcec_sys::libcec_detect_adapters(
+            cec_sys::libcec_detect_adapters(
                 connection.1,
                 &mut devices as _,
                 10,
@@ -1399,70 +835,427 @@ impl Drop for CecConnection {
     }
 }
 
-impl From<&CecConnectionCfg> for libcec_configuration {
-    fn from(config: &CecConnectionCfg) -> libcec_configuration {
-        let mut cfg: libcec_configuration;
-        unsafe {
-            cfg = mem::zeroed::<libcec_configuration>();
-            libcec_clear_configuration(&mut cfg);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn check_version() {
+        assert_eq!(CEC_LIB_VERSION_MAJOR, 6);
+    }
+
+    mod utils {
+        use super::*;
+
+        #[allow(clippy::unnecessary_cast)]
+        #[test]
+        fn test_first_3() {
+            assert_eq!(
+                [b's' as _, b'a' as _, b'm' as _] as [::std::os::raw::c_char; 3],
+                first_n::<3>("sample")
+            );
+            assert_eq!(
+                [b's' as _, b'a' as _, 0 as _] as [::std::os::raw::c_char; 3],
+                first_n::<3>("sa")
+            );
+            assert_eq!(
+                [0 as _, 0 as _, 0 as _] as [::std::os::raw::c_char; 3],
+                first_n::<3>("")
+            );
         }
-        cfg.clientVersion = libcec_version::LIBCEC_VERSION_CURRENT as _;
-        cfg.strDeviceName = first_n::<{ LIBCEC_OSD_NAME_SIZE as usize }>(&config.device_name);
-        cfg.deviceTypes = config.device_types.clone().into();
-        if let Some(v) = config.physical_address {
-            cfg.iPhysicalAddress = v;
+
+        #[allow(clippy::unnecessary_cast)]
+        #[test]
+        fn test_first_7() {
+            assert_eq!(
+                [b's' as _, b'a' as _, b'm' as _, b'p' as _, b'l' as _, b'e' as _, 0]
+                    as [::std::os::raw::c_char; 7],
+                first_n::<7>("sample")
+            );
         }
-        if let Some(v) = config.base_device {
-            cfg.baseDevice = v.repr();
+        #[test]
+        fn test_first_0() {
+            assert_eq!([] as [::std::os::raw::c_char; 0], first_n::<0>("sample"));
         }
-        if let Some(v) = config.hdmi_port {
-            cfg.iHDMIPort = v;
+    }
+
+    #[cfg(test)]
+    mod address {
+        use super::*;
+
+        #[test]
+        fn test_known_address() {
+            assert_eq!(
+                Some(KnownCecLogicalAddress(CecLogicalAddress::Audiosystem)),
+                KnownCecLogicalAddress::new(CecLogicalAddress::Audiosystem)
+            );
+            assert_eq!(
+                Some(KnownCecLogicalAddress(CecLogicalAddress::Unregistered)),
+                KnownCecLogicalAddress::new(CecLogicalAddress::Unregistered)
+            );
+            assert_eq!(
+                None,
+                KnownCecLogicalAddress::new(CecLogicalAddress::Unknown)
+            );
         }
-        if let Some(v) = config.tv_vendor {
-            cfg.tvVendor = v;
+
+        #[test]
+        fn test_known_and_registered_address() {
+            assert_eq!(
+                Some(KnownAndRegisteredCecLogicalAddress(
+                    CecLogicalAddress::Audiosystem
+                )),
+                KnownAndRegisteredCecLogicalAddress::new(CecLogicalAddress::Audiosystem)
+            );
+            assert_eq!(
+                None,
+                KnownAndRegisteredCecLogicalAddress::new(CecLogicalAddress::Unregistered)
+            );
+            assert_eq!(
+                None,
+                KnownAndRegisteredCecLogicalAddress::new(CecLogicalAddress::Unknown)
+            );
         }
-        if let Some(v) = config.wake_devices.clone() {
-            cfg.wakeDevices = v.into();
+
+        #[test]
+        fn test_to_ffi_no_address() {
+            let ffi_addresses: cec_logical_addresses = CecLogicalAddresses::default().into();
+            assert_eq!(
+                ffi_addresses.primary,
+                CecLogicalAddress::Unregistered.repr()
+            );
+            assert_eq!(ffi_addresses.addresses, [0; 16]);
+
+            // try converting back
+            let rust_addresses = CecLogicalAddresses::try_from(ffi_addresses).unwrap();
+            assert_eq!(
+                rust_addresses.primary,
+                KnownCecLogicalAddress(CecLogicalAddress::Unregistered)
+            );
+            assert!(rust_addresses.addresses.is_empty());
         }
-        if let Some(v) = config.power_off_devices.clone() {
-            cfg.powerOffDevices = v.into();
+
+        #[test]
+        fn test_to_ffi_one_address() {
+            let ffi_addresses: cec_logical_addresses = CecLogicalAddresses::with_only_primary(
+                &KnownCecLogicalAddress::new(CecLogicalAddress::Playbackdevice1).unwrap(),
+            )
+            .into();
+            assert_eq!(
+                ffi_addresses.primary,
+                CecLogicalAddress::Playbackdevice1.repr()
+            );
+            // addresses mask should be all zeros
+            assert_eq!(ffi_addresses.addresses, [0; 16]);
+
+            // try converting back
+            let rust_addresses = CecLogicalAddresses::try_from(ffi_addresses).unwrap();
+            assert_eq!(
+                rust_addresses.primary,
+                KnownCecLogicalAddress(CecLogicalAddress::Playbackdevice1)
+            );
+            assert!(rust_addresses.addresses.is_empty());
         }
-        if let Some(v) = config.get_settings_from_rom {
-            cfg.bGetSettingsFromROM = v.into();
+
+        #[test]
+        fn test_to_ffi_three_address() {
+            let mut others = HashSet::new();
+            others.insert(
+                KnownAndRegisteredCecLogicalAddress::new(CecLogicalAddress::Playbackdevice2)
+                    .unwrap(),
+            );
+            others.insert(
+                KnownAndRegisteredCecLogicalAddress::new(CecLogicalAddress::Audiosystem).unwrap(),
+            );
+
+            let non_ffi = CecLogicalAddresses::with_primary_and_addresses(
+                &KnownCecLogicalAddress::new(CecLogicalAddress::Playbackdevice1).unwrap(),
+                &others,
+            )
+            .unwrap();
+
+            let ffi_addresses: cec_logical_addresses = non_ffi.clone().into();
+
+            assert_eq!(
+                ffi_addresses.primary,
+                CecLogicalAddress::Playbackdevice1.repr()
+            );
+            let ffi_secondary = ffi_addresses.addresses;
+            const PRIMARY_INDEX: usize = CecLogicalAddress::Playbackdevice1 as usize;
+            const PLAYBACKDEVICE2_INDEX: usize = CecLogicalAddress::Playbackdevice2 as usize;
+            const AUDIOSYSTEM_INDEX: usize = CecLogicalAddress::Audiosystem as usize;
+            for (mask_index, mask_value) in ffi_secondary.iter().enumerate() {
+                match mask_index {
+                    // Note: also the primary address is in the mask even though it was not provided originally
+                    PLAYBACKDEVICE2_INDEX | AUDIOSYSTEM_INDEX | PRIMARY_INDEX => {
+                        assert_eq!(
+                            1, *mask_value,
+                            "index {}, non-ffi addresses {:?}, ffi addresses {:?}",
+                            mask_index, non_ffi, ffi_addresses
+                        )
+                    }
+                    _ => assert_eq!(0, *mask_value),
+                }
+            }
+
+            // try converting back
+            let rust_addresses = CecLogicalAddresses::try_from(ffi_addresses).unwrap();
+            assert_eq!(rust_addresses.primary, non_ffi.primary);
+            assert_eq!(rust_addresses.addresses, non_ffi.addresses);
         }
-        if let Some(v) = config.activate_source {
-            cfg.bActivateSource = v.into();
+
+        #[test]
+        fn test_unregistered_primary_no_others() {
+            let expected = Some(CecLogicalAddresses::with_only_primary(
+                &KnownCecLogicalAddress::new(CecLogicalAddress::Unregistered).unwrap(),
+            ));
+            assert_eq!(
+                expected,
+                CecLogicalAddresses::with_primary_and_addresses(
+                    &KnownCecLogicalAddress::new(CecLogicalAddress::Unregistered).unwrap(),
+                    &HashSet::new(),
+                )
+            );
         }
-        if let Some(v) = config.power_off_on_standby {
-            cfg.bPowerOffOnStandby = v.into();
+
+        #[test]
+        fn test_unregistered_primary_some_others() {
+            let mut others = HashSet::new();
+            others.insert(
+                KnownAndRegisteredCecLogicalAddress::new(CecLogicalAddress::Audiosystem).unwrap(),
+            );
+            // If there are others, there should be also primary
+            assert_eq!(
+                None,
+                CecLogicalAddresses::with_primary_and_addresses(
+                    &KnownCecLogicalAddress::new(CecLogicalAddress::Unregistered).unwrap(),
+                    &others,
+                )
+            );
         }
-        if let Some(v) = config.device_language.clone() {
-            cfg.strDeviceLanguage = first_n::<3>(&v);
+    }
+
+    #[cfg(test)]
+    mod data_packet {
+        use super::*;
+
+        /// Assert that
+        /// 1) sizes match
+        /// 2) and that the elements of CecDatapacket match the first elements of packet2
+        fn assert_eq_packet(packet: CecDatapacket, packet2: cec_datapacket) {
+            assert_eq!(packet.0.len(), packet2.size.into());
+            assert!(packet
+                .0
+                .as_slice()
+                .iter()
+                .eq(packet2.data[..(packet2.size as usize)].iter()));
         }
-        if let Some(v) = config.monitor_only {
-            cfg.bMonitorOnly = v.into();
+
+        fn assert_eq_ffi_packet(packet: cec_datapacket, packet2: cec_datapacket) {
+            assert_eq!(packet.size, packet2.size);
+            assert!(&packet.data.iter().eq(packet2.data.iter()));
         }
-        if let Some(v) = config.adapter_type {
-            cfg.adapterType = v.repr();
+
+        #[test]
+        fn test_from_ffi_full_size() {
+            let mut data_buffer = [50; 64];
+            data_buffer[0] = 5;
+            data_buffer[1] = 7;
+            data_buffer[3] = 99;
+            let ffi_packet = cec_datapacket {
+                data: data_buffer,
+                size: 64,
+            };
+            let packet: CecDatapacket = ffi_packet.into();
+            assert_eq_packet(packet, ffi_packet);
         }
-        if let Some(v) = config.combo_key {
-            cfg.comboKey = v.repr();
+
+        #[test]
+        fn test_from_ffi_not_full() {
+            let mut data_buffer = [50; 64];
+            data_buffer[0] = 5;
+            data_buffer[1] = 7;
+            data_buffer[3] = 99;
+            let ffi_packet = cec_datapacket {
+                data: data_buffer,
+                size: 3,
+            };
+            let packet: CecDatapacket = ffi_packet.into();
+            assert_eq!(packet.0.as_slice(), &[5, 7, 50]);
         }
-        if let Some(v) = config.combo_key_timeout {
-            cfg.iComboKeyTimeoutMs = v.as_millis().to_u32().unwrap();
+
+        #[test]
+        fn test_to_ffi_not_full() {
+            let mut a = ArrayVec::new();
+            a.push(2);
+            a.push(50);
+            let packet = CecDatapacket(a);
+            let ffi_packet: cec_datapacket = packet.into();
+            let mut expected = cec_datapacket {
+                size: 2,
+                data: [0; 64],
+            };
+            expected.data[0] = 2;
+            expected.data[1] = 50;
+            assert_eq_ffi_packet(ffi_packet, expected);
         }
-        if let Some(v) = config.button_repeat_rate {
-            cfg.iButtonRepeatRateMs = v.as_millis().to_u32().unwrap();
+
+        #[test]
+        fn test_to_ffi_full() {
+            let mut a = ArrayVec::from([99; 64]);
+            a.as_mut_slice()[1] = 50;
+            let packet = CecDatapacket(a);
+            let ffi_packet: cec_datapacket = packet.into();
+            let mut expected = cec_datapacket {
+                size: 64,
+                data: [99; 64],
+            };
+            expected.data[1] = 50;
+            assert_eq_ffi_packet(ffi_packet, expected);
         }
-        if let Some(v) = config.button_release_delay {
-            cfg.iButtonReleaseDelayMs = v.as_millis().to_u32().unwrap();
+    }
+
+    #[cfg(test)]
+    mod command {
+        use super::*;
+
+        fn assert_eq_ffi_packet(packet: cec_datapacket, packet2: cec_datapacket) {
+            assert_eq!(packet.size, packet2.size);
+            assert!(&packet.data.iter().eq(packet2.data.iter()));
         }
-        if let Some(v) = config.double_tap_timeout {
-            cfg.iDoubleTapTimeoutMs = v.as_millis().to_u32().unwrap();
+
+        fn assert_eq_ffi_command(actual: cec_command, expected: cec_command) {
+            assert_eq!(actual.ack, expected.ack);
+            assert_eq!(actual.destination, expected.destination);
+            assert_eq!(actual.eom, expected.eom);
+            assert_eq!(actual.initiator, expected.initiator);
+            assert_eq!(actual.opcode, expected.opcode);
+            assert_eq!(actual.opcode_set, expected.opcode_set);
+            assert_eq_ffi_packet(actual.parameters, expected.parameters);
+            assert_eq!(actual.transmit_timeout, expected.transmit_timeout);
         }
-        if let Some(v) = config.autowake_avr {
-            cfg.bAutoWakeAVR = v.into();
+
+        fn assert_eq_command(actual: CecCommand, expected: CecCommand) {
+            assert_eq!(actual.ack, expected.ack);
+            assert_eq!(actual.destination, expected.destination);
+            assert_eq!(actual.eom, expected.eom);
+            assert_eq!(actual.initiator, expected.initiator);
+            assert_eq!(actual.opcode, expected.opcode);
+            assert_eq!(actual.opcode_set, expected.opcode_set);
+            assert_eq!(actual.parameters.0, expected.parameters.0);
+            assert_eq!(actual.transmit_timeout, expected.transmit_timeout);
         }
-        cfg
+
+        #[test]
+        fn test_to_ffi() {
+            let mut parameters = ArrayVec::new();
+            parameters.push(2);
+            parameters.push(3);
+            let command = CecCommand {
+                opcode: CecOpcode::ClearAnalogueTimer,
+                initiator: CecLogicalAddress::Playbackdevice1,
+                destination: CecLogicalAddress::Playbackdevice2,
+                parameters: CecDatapacket(parameters.clone()),
+                transmit_timeout: Duration::from_secs(65),
+                ack: false,
+                eom: true,
+                opcode_set: true,
+            };
+            let ffi_command: cec_command = command.into();
+            assert_eq_ffi_command(
+                ffi_command,
+                cec_command {
+                    ack: 0,
+                    destination: CecLogicalAddress::Playbackdevice2.repr(),
+                    eom: 1,
+                    initiator: CecLogicalAddress::Playbackdevice1.repr(),
+                    opcode: CecOpcode::ClearAnalogueTimer.repr(),
+                    opcode_set: 1,
+                    parameters: CecDatapacket(parameters).into(), // OK to use here, verified in CecDatapacket unit tests
+                    transmit_timeout: 65_000,
+                },
+            )
+        }
+
+        #[test]
+        fn test_from_ffi() {
+            let mut parameters = ArrayVec::new();
+            parameters.push(2);
+            parameters.push(3);
+            let ffi_command = cec_command {
+                ack: 0,
+                destination: CecLogicalAddress::Playbackdevice2.repr(),
+                eom: 1,
+                initiator: CecLogicalAddress::Playbackdevice1.repr(),
+                opcode: CecOpcode::ClearAnalogueTimer.repr(),
+                opcode_set: 1,
+                parameters: CecDatapacket(parameters.clone()).into(), // OK to use here, verified in CecDatapacket unit tests
+                transmit_timeout: 65_000,
+            };
+            let command: CecCommand = ffi_command.try_into().unwrap();
+            assert_eq_command(
+                command,
+                CecCommand {
+                    ack: false,
+                    destination: CecLogicalAddress::Playbackdevice2,
+                    eom: true,
+                    initiator: CecLogicalAddress::Playbackdevice1,
+                    opcode: CecOpcode::ClearAnalogueTimer,
+                    opcode_set: true,
+                    parameters: CecDatapacket(parameters),
+                    transmit_timeout: Duration::from_millis(65000),
+                },
+            )
+        }
+    }
+
+    #[cfg(test)]
+    mod device {
+        use super::*;
+
+        #[test]
+        fn test_to_ffi_empty() {
+            let devices = ArrayVec::new();
+            let ffi_devices: cec_device_type_list = CecDeviceTypeVec(devices).into();
+            assert_eq!(ffi_devices.types, [CecDeviceType::Reserved.repr(); 5]);
+        }
+
+        #[test]
+        fn test_to_ffi_two_devices() {
+            let mut devices = ArrayVec::new();
+            devices.push(CecDeviceType::PlaybackDevice);
+            devices.push(CecDeviceType::RecordingDevice);
+            let ffi_devices: cec_device_type_list = CecDeviceTypeVec(devices).into();
+            assert_eq!(ffi_devices.types[0], CecDeviceType::PlaybackDevice.repr());
+            assert_eq!(ffi_devices.types[1], CecDeviceType::RecordingDevice.repr());
+            assert_eq!(ffi_devices.types[2..], [CecDeviceType::Reserved.repr(); 3]);
+        }
+    }
+
+    #[cfg(test)]
+    mod keypress {
+        use super::*;
+
+        #[test]
+        fn test_keypress_from_ffi_known_code() {
+            let keypress: CecKeypress = cec_keypress {
+                keycode: cec_user_control_code::CEC_USER_CONTROL_CODE_UP,
+                duration: 300,
+            }
+            .try_into()
+            .unwrap();
+            assert_eq!(keypress.keycode, CecUserControlCode::Up);
+            assert_eq!(keypress.duration, Duration::from_millis(300));
+        }
+
+        #[test]
+        fn test_keypress_from_ffi_unknown_code() {
+            let keypress: Result<CecKeypress, TryFromCecKeyPressError> = cec_keypress {
+                keycode: unsafe { std::mem::transmute::<i32, cec_user_control_code>(666) },
+                duration: 300,
+            }
+            .try_into();
+            assert_eq!(keypress, Err(TryFromCecKeyPressError::UnknownKeycode));
+        }
     }
 }
