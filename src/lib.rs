@@ -19,39 +19,29 @@ pub use crate::enums6::*;
 #[cfg(all(not(abi4), not(abi5), not(abi6)))]
 compile_error!("BUG: libcec abi not detected");
 
-use log::{trace, warn};
-
-use std::{collections::HashSet, pin::Pin};
-use thiserror::Error;
-
-use arrayvec::ArrayVec;
-use libcec_sys::{
-    cec_command, cec_datapacket, cec_device_type_list, cec_keypress, cec_log_message,
-    cec_logical_address, cec_logical_addresses, cec_power_status, libcec_audio_get_status,
-    libcec_audio_mute, libcec_audio_toggle_mute, libcec_audio_unmute, libcec_clear_configuration,
-    libcec_close, libcec_configuration, libcec_connection_t, libcec_destroy,
-    libcec_get_active_source, libcec_get_device_power_status, libcec_get_logical_addresses,
-    libcec_initialise, libcec_is_active_source, libcec_mute_audio, libcec_open,
-    libcec_power_on_devices, libcec_send_key_release, libcec_send_keypress,
-    libcec_set_active_source, libcec_set_inactive_view, libcec_set_logical_address,
-    libcec_standby_devices, libcec_switch_monitoring, libcec_transmit, libcec_volume_down,
-    libcec_volume_up, ICECCallbacks, LIBCEC_OSD_NAME_SIZE, LIBCEC_VERSION_CURRENT,
+use std::{
+    collections::HashSet,
+    convert::{TryFrom, TryInto},
+    ffi::{c_int, CStr, CString},
+    fmt, mem,
+    os::raw::c_void,
+    pin::Pin,
+    result,
+    time::Duration,
 };
 
+use arrayvec::ArrayVec;
+use libcec_sys::*;
+use log::{trace, warn};
 use num_traits::ToPrimitive;
-use std::convert::{TryFrom, TryInto};
-use std::ffi::{CStr, CString};
-use std::os::raw::c_void;
-use std::time::Duration;
-use std::{mem, result};
-
-use std::fmt;
+use thiserror::Error;
 
 #[cfg(test)]
 mod tests {
 
-    use libcec_sys::CEC_LIB_VERSION_MAJOR;
     use std::env;
+
+    use libcec_sys::CEC_LIB_VERSION_MAJOR;
 
     #[test]
     fn test_abi_ci() {
@@ -156,7 +146,7 @@ impl From<KnownCecLogicalAddress> for CecLogicalAddress {
 
 impl From<KnownCecLogicalAddress> for cec_logical_address {
     fn from(address: KnownCecLogicalAddress) -> Self {
-        address.0.into()
+        address.0.repr()
     }
 }
 
@@ -181,7 +171,7 @@ impl From<KnownAndRegisteredCecLogicalAddress> for CecLogicalAddress {
 
 impl From<KnownAndRegisteredCecLogicalAddress> for cec_logical_address {
     fn from(address: KnownAndRegisteredCecLogicalAddress) -> Self {
-        address.0.into()
+        address.0.repr()
     }
 }
 
@@ -325,11 +315,11 @@ pub struct CecCommand {
 impl From<CecCommand> for cec_command {
     fn from(command: CecCommand) -> cec_command {
         cec_command {
-            initiator: command.initiator.into(),
-            destination: command.destination.into(),
+            initiator: command.initiator.repr(),
+            destination: command.destination.repr(),
             ack: command.ack.into(),
             eom: command.eom.into(),
-            opcode: command.opcode.into(),
+            opcode: command.opcode.repr(),
             parameters: command.parameters.into(),
             opcode_set: command.opcode_set.into(),
             transmit_timeout: command.transmit_timeout.as_millis() as i32,
@@ -351,12 +341,12 @@ impl core::convert::TryFrom<cec_command> for CecCommand {
     type Error = TryFromCecCommandError;
 
     fn try_from(command: cec_command) -> std::result::Result<Self, Self::Error> {
-        let opcode = CecOpcode::try_from(command.opcode)
-            .map_err(|_| TryFromCecCommandError::UnknownOpcode)?;
-        let initiator = CecLogicalAddress::try_from(command.initiator)
-            .map_err(|_| TryFromCecCommandError::UnknownInitiator)?;
-        let destination = CecLogicalAddress::try_from(command.destination)
-            .map_err(|_| TryFromCecCommandError::UnknownDestination)?;
+        let opcode = CecOpcode::from_repr(command.opcode)
+            .ok_or_else(|| TryFromCecCommandError::UnknownOpcode)?;
+        let initiator = CecLogicalAddress::from_repr(command.initiator)
+            .ok_or_else(|| TryFromCecCommandError::UnknownInitiator)?;
+        let destination = CecLogicalAddress::from_repr(command.destination)
+            .ok_or_else(|| TryFromCecCommandError::UnknownDestination)?;
         let parameters = command.parameters.into();
         let transmit_timeout = Duration::from_millis(if command.transmit_timeout < 0 {
             0
@@ -501,8 +491,8 @@ impl core::convert::TryFrom<cec_log_message> for CecLogMessage {
             .to_str()
             .map_err(|_| TryFromCecLogMessageError::MessageParseError)?
             .to_owned();
-        let level = CecLogLevel::try_from(log_message.level)
-            .map_err(|_| TryFromCecLogMessageError::LogLevelParseError)?;
+        let level = CecLogLevel::from_repr(log_message.level)
+            .ok_or_else(|| TryFromCecLogMessageError::LogLevelParseError)?;
         let time = log_message
             .time
             .try_into()
@@ -590,18 +580,18 @@ pub enum TryFromCecLogicalAddressesError {
 impl TryFrom<cec_logical_addresses> for CecLogicalAddresses {
     type Error = TryFromCecLogicalAddressesError;
     fn try_from(addresses: cec_logical_addresses) -> Result<Self, Self::Error> {
-        let primary = CecLogicalAddress::try_from(addresses.primary)
-            .map_err(|_| TryFromCecLogicalAddressesError::InvalidPrimaryAddress)?;
+        let primary = CecLogicalAddress::from_repr(addresses.primary)
+            .ok_or_else(|| TryFromCecLogicalAddressesError::InvalidPrimaryAddress)?;
         let primary = KnownCecLogicalAddress::new(primary)
             .ok_or(TryFromCecLogicalAddressesError::UnknownPrimaryAddress)?;
 
         let addresses = HashSet::from_iter(addresses.addresses.into_iter().enumerate().filter_map(
             |(logical_addr, addr_mask)| {
-                let logical_addr = logical_addr as i32;
+                let logical_addr = logical_addr as c_int;
                 // If logical address x is in use, addresses.addresses[x] != 0.
                 if addr_mask != 0 {
                     KnownAndRegisteredCecLogicalAddress::new(
-                        CecLogicalAddress::try_from(logical_addr).ok()?,
+                        CecLogicalAddress::try_from(logical_addr).unwrap(),
                     )
                 } else {
                     None
@@ -623,7 +613,7 @@ impl From<CecLogicalAddresses> for cec_logical_addresses {
         };
         for known_address in addresses.addresses {
             let address: CecLogicalAddress = known_address.into();
-            let address_mask_position: i32 = address.into();
+            let address_mask_position = address.repr();
             data.addresses[address_mask_position as usize] = 1;
         }
         data
@@ -811,8 +801,8 @@ pub enum TryFromCecKeyPressError {
 impl core::convert::TryFrom<cec_keypress> for CecKeypress {
     type Error = TryFromCecKeyPressError;
     fn try_from(keypress: cec_keypress) -> std::result::Result<Self, Self::Error> {
-        let keycode = CecUserControlCode::try_from(keypress.keycode)
-            .map_err(|_| TryFromCecKeyPressError::UnknownKeycode)?;
+        let keycode = CecUserControlCode::from_repr(keypress.keycode)
+            .ok_or_else(|| TryFromCecKeyPressError::UnknownKeycode)?;
         Ok(CecKeypress {
             keycode,
             duration: Duration::from_millis(keypress.duration.into()),
@@ -822,9 +812,9 @@ impl core::convert::TryFrom<cec_keypress> for CecKeypress {
 
 #[cfg(test)]
 mod keypress_tests {
-    use super::*;
-
     use libcec_sys::CEC_USER_CONTROL_CODE_UP;
+
+    use super::*;
 
     #[test]
     fn test_keypress_from_ffi_known_code() {
@@ -863,10 +853,10 @@ impl CecDeviceTypeVec {
 impl From<CecDeviceTypeVec> for cec_device_type_list {
     fn from(device_types: CecDeviceTypeVec) -> cec_device_type_list {
         let mut devices = cec_device_type_list {
-            types: [CecDeviceType::Reserved.into(); 5],
+            types: [CecDeviceType::Reserved.repr(); 5],
         };
         for (i, type_id) in device_types.0.iter().enumerate() {
-            devices.types[i] = (*type_id).into();
+            devices.types[i] = (*type_id).repr();
         }
         devices
     }
@@ -916,7 +906,7 @@ extern "C" fn key_press_callback(rust_callbacks: *mut c_void, keypress_raw: *con
     let rust_callbacks: *mut CecCallbacks = rust_callbacks.cast();
     if let Some(rust_callbacks) = unsafe { rust_callbacks.as_mut() } {
         if let Some(keypress) = unsafe { keypress_raw.as_ref() } {
-            trace!("CecCallbacks: keypress.keycode {}", keypress.keycode);
+            trace!("CecCallbacks: keypress.keycode {:?}", keypress.keycode);
             if let Some(rust_callback) = &mut rust_callbacks.key_press_callback {
                 if let Ok(keypress) = (*keypress).try_into() {
                     rust_callback(keypress);
@@ -935,7 +925,7 @@ extern "C" fn command_received_callback(
     if let Some(rust_callbacks) = unsafe { rust_callbacks.as_mut() } {
         if let Some(command) = unsafe { command_raw.as_ref() } {
             trace!(
-                "command_received_callback: command.opcode {}",
+                "command_received_callback: command.opcode {:?}",
                 command.opcode
             );
             if let Some(rust_callback) = &mut rust_callbacks.command_received_callback {
@@ -1120,14 +1110,14 @@ impl CecConnection {
         }
     }
     pub fn send_power_on_devices(&self, address: CecLogicalAddress) -> CecConnectionResult<()> {
-        if unsafe { libcec_power_on_devices(self.1, address.into()) } == 0 {
+        if unsafe { libcec_power_on_devices(self.1, address.repr()) } == 0 {
             Err(CecConnectionResultError::TransmitFailed)
         } else {
             Ok(())
         }
     }
     pub fn send_standby_devices(&self, address: CecLogicalAddress) -> CecConnectionResult<()> {
-        if unsafe { libcec_standby_devices(self.1, address.into()) } == 0 {
+        if unsafe { libcec_standby_devices(self.1, address.repr()) } == 0 {
             Err(CecConnectionResultError::TransmitFailed)
         } else {
             Ok(())
@@ -1135,7 +1125,7 @@ impl CecConnection {
     }
 
     pub fn set_active_source(&self, device_type: CecDeviceType) -> CecConnectionResult<()> {
-        if unsafe { libcec_set_active_source(self.1, device_type.into()) } == 0 {
+        if unsafe { libcec_set_active_source(self.1, device_type.repr()) } == 0 {
             Err(CecConnectionResultError::TransmitFailed)
         } else {
             Ok(())
@@ -1144,17 +1134,11 @@ impl CecConnection {
 
     pub fn get_active_source(&self) -> CecLogicalAddress {
         let active_raw: cec_logical_address = unsafe { libcec_get_active_source(self.1) };
-        match CecLogicalAddress::try_from(active_raw) {
-            Ok(address) => address,
-            Err(active_raw) => {
-                warn!("get_active_source: Could not convert logical address {} to rust enum. Returning Unknown", active_raw);
-                CecLogicalAddress::Unknown
-            }
-        }
+        CecLogicalAddress::from_repr(active_raw).unwrap()
     }
 
     pub fn is_active_source(&self, address: CecLogicalAddress) -> CecConnectionResult<()> {
-        if unsafe { libcec_is_active_source(self.1, address.into()) } == 0 {
+        if unsafe { libcec_is_active_source(self.1, address.repr()) } == 0 {
             Err(CecConnectionResultError::TransmitFailed)
         } else {
             Ok(())
@@ -1163,14 +1147,9 @@ impl CecConnection {
 
     pub fn get_device_power_status(&self, address: CecLogicalAddress) -> CecPowerStatus {
         let status_raw: cec_power_status =
-            unsafe { libcec_get_device_power_status(self.1, address.into()) };
-        match CecPowerStatus::try_from(status_raw) {
-            Ok(status) => status,
-            Err(status_raw) => {
-                warn!("get_device_power_status: Could not convert result {} to rust enum. Returning Unknown", status_raw);
-                CecPowerStatus::Unknown
-            }
-        }
+            unsafe { libcec_get_device_power_status(self.1, address.repr()) };
+
+        CecPowerStatus::from_repr(status_raw).unwrap()
     }
 
     pub fn send_keypress(
@@ -1179,7 +1158,7 @@ impl CecConnection {
         key: CecUserControlCode,
         wait: bool,
     ) -> CecConnectionResult<()> {
-        if unsafe { libcec_send_keypress(self.1, address.into(), key.into(), wait.into()) } == 0 {
+        if unsafe { libcec_send_keypress(self.1, address.repr(), key.repr(), wait.into()) } == 0 {
             Err(CecConnectionResultError::TransmitFailed)
         } else {
             Ok(())
@@ -1191,7 +1170,7 @@ impl CecConnection {
         address: CecLogicalAddress,
         wait: bool,
     ) -> CecConnectionResult<()> {
-        if unsafe { libcec_send_key_release(self.1, address.into(), wait.into()) } == 0 {
+        if unsafe { libcec_send_key_release(self.1, address.repr(), wait.into()) } == 0 {
             Err(CecConnectionResultError::TransmitFailed)
         } else {
             Ok(())
@@ -1263,7 +1242,7 @@ impl CecConnection {
     }
 
     pub fn set_logical_address(&self, address: CecLogicalAddress) -> CecConnectionResult<()> {
-        if unsafe { libcec_set_logical_address(self.1, address.into()) } == 0 {
+        if unsafe { libcec_set_logical_address(self.1, address.repr()) } == 0 {
             Err(CecConnectionResultError::TransmitFailed)
         } else {
             Ok(())
@@ -1427,14 +1406,14 @@ impl From<&CecConnectionCfg> for libcec_configuration {
             cfg = mem::zeroed::<libcec_configuration>();
             libcec_clear_configuration(&mut cfg);
         }
-        cfg.clientVersion = LIBCEC_VERSION_CURRENT as _;
+        cfg.clientVersion = libcec_version::LIBCEC_VERSION_CURRENT as _;
         cfg.strDeviceName = first_n::<{ LIBCEC_OSD_NAME_SIZE as usize }>(&config.device_name);
         cfg.deviceTypes = config.device_types.clone().into();
         if let Some(v) = config.physical_address {
             cfg.iPhysicalAddress = v;
         }
         if let Some(v) = config.base_device {
-            cfg.baseDevice = v.into();
+            cfg.baseDevice = v.repr();
         }
         if let Some(v) = config.hdmi_port {
             cfg.iHDMIPort = v;
@@ -1464,10 +1443,10 @@ impl From<&CecConnectionCfg> for libcec_configuration {
             cfg.bMonitorOnly = v.into();
         }
         if let Some(v) = config.adapter_type {
-            cfg.adapterType = v.into();
+            cfg.adapterType = v.repr();
         }
         if let Some(v) = config.combo_key {
-            cfg.comboKey = v.into();
+            cfg.comboKey = v.repr();
         }
         if let Some(v) = config.combo_key_timeout {
             cfg.iComboKeyTimeoutMs = v.as_millis().to_u32().unwrap();
