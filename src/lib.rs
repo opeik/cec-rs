@@ -1,14 +1,14 @@
 #![feature(let_chains)]
 
-mod convert;
-mod types;
+pub(crate) mod callback;
+pub(crate) mod convert;
+pub(crate) mod types;
 
 use std::{
     collections::HashSet,
     convert::{TryFrom, TryInto},
     ffi::{c_int, CStr, CString},
-    fmt,
-    os::raw::c_void,
+    fmt::{self, Display},
     pin::Pin,
     result,
     time::Duration,
@@ -17,7 +17,6 @@ use std::{
 use arrayvec::ArrayVec;
 use cec_sys::*;
 use derive_builder::{Builder, UninitializedFieldError};
-use log::trace;
 
 pub use crate::types::*;
 
@@ -33,10 +32,14 @@ pub enum Error {
     TryFromLogicalAddressesError(#[from] TryFromLogicalAddressesError),
     #[error("failed to convert keypress: {0}")]
     TryFromKeypressError(#[from] TryFromKeypressError),
+    #[error("failed to convert alert: {0}")]
+    TryFromAlertError(#[from] TryFromAlertError),
+    #[error("failed to convert menu state: {0}")]
+    TryFromMenuStateError(#[from] TryFromMenuStateError),
     #[error("failed to connect: {0}")]
     ConnectionError(#[from] ConnectionError),
-    #[error("config error: {0}")]
-    CfgError(#[from] CfgBuilderError),
+    #[error("builder error: {0}")]
+    BuilderError(#[from] CfgBuilderError),
     #[error("nul byte found: {0}")]
     NulError(#[from] std::ffi::NulError),
 }
@@ -53,8 +56,8 @@ pub enum ConnectionError {
     CallbackRegistrationFailed,
     #[error("transmit failed")]
     TransmitFailed,
-    #[error("port missing")]
-    PortMissing,
+    #[error("device missing")]
+    DeviceMissing,
     #[error("ffi error: {0}")]
     FfiError(#[from] std::ffi::NulError),
 }
@@ -93,6 +96,18 @@ pub enum TryFromLogicalAddressesError {
 pub enum TryFromKeypressError {
     #[error("unknown keycode")]
     UnknownKeycode,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum TryFromAlertError {
+    #[error("unknown alert")]
+    UnknownAlert,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum TryFromMenuStateError {
+    #[error("unknown menu state")]
+    UnknownMenuState,
 }
 
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
@@ -164,83 +179,48 @@ pub struct Keypress {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeviceTypes(pub ArrayVec<DeviceType, 5>);
+pub struct DeviceKinds(pub ArrayVec<DeviceKind, 5>);
 
 #[derive(derive_more::Debug)]
 struct Callbacks {
     #[debug(skip)]
-    pub key_press_callback: Option<Box<dyn FnMut(Keypress) + Send>>,
+    pub on_key_press: Option<Box<OnKeyPress>>,
+
     #[debug(skip)]
-    pub command_received_callback: Option<Box<dyn FnMut(Cmd) + Send>>,
+    pub on_cmd_received: Option<Box<OnCmd>>,
+
     #[debug(skip)]
-    pub log_message_callbacks: Option<Box<dyn FnMut(LogMsg) + Send>>,
-    // pub onSourceActivated: FnSourceActivated,
+    pub on_log_msg: Option<Box<OnLogMsg>>,
+
+    #[debug(skip)]
+    pub on_cfg_changed: Option<Box<OnCfgChanged>>,
+
+    #[debug(skip)]
+    pub on_alert: Option<Box<OnAlert>>,
+
+    #[debug(skip)]
+    pub on_menu_state_changed: Option<Box<OnMenuStateChanged>>,
+
+    #[debug(skip)]
+    pub on_source_activated: Option<Box<OnSourceActivated>>,
 }
 
-pub type FnKeyPress = dyn FnMut(Keypress) + Send;
-pub type FnCommand = dyn FnMut(Cmd) + Send;
-pub type FnLogMessage = dyn FnMut(LogMsg) + Send;
-pub type FnSourceActivated = dyn FnMut(LogicalAddress, bool);
-
-extern "C" fn key_press_callback(rust_callbacks: *mut c_void, keypress_raw: *const cec_keypress) {
-    trace!("key_press_callback");
-    let rust_callbacks: *mut Callbacks = rust_callbacks.cast();
-    if let Some(rust_callbacks) = unsafe { rust_callbacks.as_mut() } {
-        if let Some(keypress) = unsafe { keypress_raw.as_ref() } {
-            trace!("CecCallbacks: keypress.keycode {:?}", keypress.keycode);
-            if let Some(rust_callback) = &mut rust_callbacks.key_press_callback {
-                if let Ok(keypress) = (*keypress).try_into() {
-                    rust_callback(keypress);
-                }
-            }
-        }
-    }
-}
-
-extern "C" fn command_received_callback(
-    rust_callbacks: *mut c_void,
-    command_raw: *const cec_command,
-) {
-    trace!("command_received_callback");
-    let rust_callbacks: *mut Callbacks = rust_callbacks.cast();
-    if let Some(rust_callbacks) = unsafe { rust_callbacks.as_mut() } {
-        if let Some(command) = unsafe { command_raw.as_ref() } {
-            trace!(
-                "command_received_callback: command.opcode {:?}",
-                command.opcode
-            );
-            if let Some(rust_callback) = &mut rust_callbacks.command_received_callback {
-                if let Ok(command) = (*command).try_into() {
-                    rust_callback(command);
-                }
-            }
-        }
-    }
-}
-
-extern "C" fn log_message_callback(
-    rust_callbacks: *mut c_void,
-    log_message_raw: *const cec_log_message,
-) {
-    trace!("log_message_callback");
-    let rust_callbacks: *mut Callbacks = rust_callbacks.cast();
-    if let Some(rust_callbacks) = unsafe { rust_callbacks.as_mut() }
-        && let Some(log_message) = unsafe { log_message_raw.as_ref() }
-        && let Some(rust_callback) = &mut rust_callbacks.log_message_callbacks
-        && let Ok(log_message) = (*log_message).try_into()
-    {
-        rust_callback(log_message);
-    }
-}
+pub type OnKeyPress = dyn FnMut(Keypress) + Send;
+pub type OnCmd = dyn FnMut(Cmd) + Send;
+pub type OnLogMsg = dyn FnMut(LogMsg) + Send;
+pub type OnSourceActivated = dyn FnMut(KnownLogicalAddress, bool) + Send;
+pub type OnCfgChanged = dyn FnMut(Cfg) + Send;
+pub type OnAlert = dyn FnMut(Alert) + Send;
+pub type OnMenuStateChanged = dyn FnMut(MenuState) + Send;
 
 static mut CALLBACKS: ICECCallbacks = ICECCallbacks {
-    logMessage: Option::Some(log_message_callback),
-    keyPress: Option::Some(key_press_callback),
-    commandReceived: Option::Some(command_received_callback),
-    configurationChanged: Option::None,
-    alert: Option::None,
-    menuStateChanged: Option::None,
-    sourceActivated: Option::None,
+    logMessage: Some(callback::on_log_msg),
+    keyPress: Some(callback::on_key_press),
+    commandReceived: Some(callback::on_cmd_received),
+    configurationChanged: Some(callback::on_config_changed),
+    alert: Some(callback::on_alert),
+    menuStateChanged: Some(callback::on_menu_changed),
+    sourceActivated: Some(callback::on_source_activated),
 };
 
 #[derive(Builder, derive_more::Debug)]
@@ -251,30 +231,48 @@ static mut CALLBACKS: ICECCallbacks = ICECCallbacks {
 pub struct Cfg {
     #[debug(skip)]
     #[builder(default, setter(strip_option), pattern = "owned")]
-    key_press_callback: Option<Box<FnKeyPress>>,
+    on_key_press: Option<Box<OnKeyPress>>,
+
     #[debug(skip)]
     #[builder(default, setter(strip_option), pattern = "owned")]
-    command_received_callback: Option<Box<FnCommand>>,
+    on_command_received: Option<Box<OnCmd>>,
+
     #[debug(skip)]
     #[builder(default, setter(strip_option), pattern = "owned")]
-    log_message_callback: Option<Box<FnLogMessage>>,
+    on_log_message: Option<Box<OnLogMsg>>,
+
+    #[debug(skip)]
+    #[builder(default, setter(strip_option), pattern = "owned")]
+    on_cfg_changed: Option<Box<OnCfgChanged>>,
+
+    #[debug(skip)]
+    #[builder(default, setter(strip_option), pattern = "owned")]
+    on_alert: Option<Box<OnAlert>>,
+
+    #[debug(skip)]
+    #[builder(default, setter(strip_option), pattern = "owned")]
+    on_menu_state_change: Option<Box<OnMenuStateChanged>>,
+
+    #[debug(skip)]
+    #[builder(default, setter(strip_option), pattern = "owned")]
+    on_source_activated: Option<Box<OnSourceActivated>>,
 
     #[builder(default)]
-    port: Option<String>,
+    device: Option<String>,
 
     #[builder(default, setter(strip_option))]
-    detect_port: Option<bool>,
+    detect_device: Option<bool>,
 
     #[builder(default = "Duration::from_secs(5)")]
-    open_timeout: Duration,
+    timeout: Duration,
 
     //
     // cec_configuration items follow up
     //
-    device_name: String,
+    name: String,
 
     ///< the device type(s) to use on the CEC bus for libCEC.
-    device_type: DeviceType,
+    kind: DeviceKind,
 
     // optional cec_configuration items follow
     ///< the physical address of the CEC adapter.
@@ -303,7 +301,7 @@ pub struct Cfg {
 
     /// True to get the settings from the ROM (if set, and a v2 ROM is present), false to use these settings.
     #[builder(default, setter(strip_option))]
-    get_settings_from_rom: Option<bool>,
+    settings_from_rom: Option<bool>,
 
     /// Make libCEC the active source on the bus when starting the player application.
     #[builder(default, setter(strip_option))]
@@ -316,7 +314,7 @@ pub struct Cfg {
 
     /// The menu language used by the client. 3 character ISO 639-2 country code. see http://http://www.loc.gov/standards/iso639-2/ added in 1.6.2.
     #[builder(default, setter(strip_option))]
-    device_language: Option<String>,
+    language: Option<String>,
 
     /// Won't allocate a CCECClient when starting the connection when set (same as monitor mode). added in 1.6.3.
     #[builder(default, setter(strip_option))]
@@ -353,13 +351,14 @@ pub struct Cfg {
 
 impl CfgBuilder {
     pub fn connect(self) -> Result<Connection> {
-        let config = self.build()?;
-        config.connect()
+        let cfg = self.build()?;
+        cfg.connect()
     }
 }
 
 #[derive(Debug)]
 pub struct Connection(pub Cfg, pub libcec_connection_t, Pin<Box<Callbacks>>);
+unsafe impl Send for Connection {}
 
 impl Connection {
     pub fn builder() -> CfgBuilder {
@@ -388,7 +387,7 @@ impl Connection {
         }
     }
 
-    pub fn set_active_source(&self, device_type: DeviceType) -> Result<()> {
+    pub fn set_active_source(&self, device_type: DeviceKind) -> Result<()> {
         if unsafe { libcec_set_active_source(self.1, device_type.repr()) } == 0 {
             Err(ConnectionError::TransmitFailed.into())
         } else {
@@ -563,22 +562,22 @@ impl Cfg {
     /// - LibInitFailed: cec_sys::libcec_initialise fails
     /// - AdapterOpenFailed: cec_sys::libcec_open fails
     /// - CallbackRegistrationFailed: cec_sys::libcec_enable_callbacks fails
-    ///
-    /// # Panics
-    ///
-    /// Panics if self.port contains internal 0 byte
     pub fn connect(mut self) -> Result<Connection> {
         let mut cfg: libcec_configuration = (&self).into();
         // Consume self.*_callback and build CecCallbacks from those
         let pinned_callbacks = Box::pin(Callbacks {
-            key_press_callback: self.key_press_callback.take(),
-            command_received_callback: self.command_received_callback.take(),
-            log_message_callbacks: self.log_message_callback.take(),
+            on_key_press: self.on_key_press.take(),
+            on_cmd_received: self.on_command_received.take(),
+            on_log_msg: self.on_log_message.take(),
+            on_cfg_changed: self.on_cfg_changed.take(),
+            on_alert: self.on_alert.take(),
+            on_menu_state_changed: self.on_menu_state_change.take(),
+            on_source_activated: self.on_source_activated.take(),
         });
         let rust_callbacks_as_void_ptr = &*pinned_callbacks as *const _ as *mut _;
-        let detect_port = self.detect_port.unwrap_or(false);
-        let port = self.port.clone();
-        let open_timeout = self.open_timeout.as_millis() as u32;
+        let detect_device = self.detect_device.unwrap_or(false);
+        let device = self.device.clone();
+        let open_timeout = self.timeout.as_millis() as u32;
 
         let connection = Connection(
             self,
@@ -590,18 +589,18 @@ impl Cfg {
             return Err(ConnectionError::InitFailed.into());
         }
 
-        let resolved_port = match detect_port {
-            true => match Self::detect_port(&connection) {
+        let resolved_device = match detect_device {
+            true => match Self::detect_device(&connection) {
                 Ok(x) => x,
                 Err(e) => return Err(e),
             },
-            false => match port {
+            false => match device {
                 Some(x) => CString::new(x)?,
-                None => return Err(ConnectionError::PortMissing.into()),
+                None => return Err(ConnectionError::DeviceMissing.into()),
             },
         };
 
-        if unsafe { libcec_open(connection.1, resolved_port.as_ptr(), open_timeout) } == 0 {
+        if unsafe { libcec_open(connection.1, resolved_device.as_ptr(), open_timeout) } == 0 {
             return Err(ConnectionError::AdapterOpenFailed.into());
         }
 
@@ -615,7 +614,7 @@ impl Cfg {
         Ok(connection)
     }
 
-    fn detect_port(connection: &Connection) -> Result<CString> {
+    fn detect_device(connection: &Connection) -> Result<CString> {
         let mut devices: [cec_sys::cec_adapter_descriptor; 10] = unsafe { std::mem::zeroed() };
         let num_devices = unsafe {
             cec_sys::libcec_detect_adapters(
@@ -630,13 +629,13 @@ impl Cfg {
         if num_devices < 0 {
             Err(ConnectionError::NoAdapterFound.into())
         } else {
-            let port = devices[0]
+            let device = devices[0]
                 .strComName
                 .into_iter()
                 .flat_map(u8::try_from)
                 .filter(|x| *x != 0)
                 .collect::<Vec<u8>>();
-            Ok(CString::new(port)?)
+            Ok(CString::new(device)?)
         }
     }
 }
@@ -668,69 +667,7 @@ impl RegisteredLogicalAddress {
     }
 }
 
-impl TryFrom<KnownLogicalAddress> for RegisteredLogicalAddress {
-    type Error = Error;
-
-    fn try_from(address: KnownLogicalAddress) -> Result<Self> {
-        let unchecked_address = address.0;
-        Ok(Self::new(unchecked_address)
-            .ok_or(TryFromLogicalAddressesError::InvalidPrimaryAddress)?)
-    }
-}
-
-impl TryFrom<cec_command> for Cmd {
-    type Error = Error;
-
-    fn try_from(command: cec_command) -> Result<Self> {
-        let opcode = Opcode::from_repr(command.opcode).ok_or(TryFromCmdError::UnknownOpcode)?;
-        let initiator = LogicalAddress::from_repr(command.initiator)
-            .ok_or(TryFromCmdError::UnknownInitiator)?;
-        let destination = LogicalAddress::from_repr(command.destination)
-            .ok_or(TryFromCmdError::UnknownDestination)?;
-        let parameters = command.parameters.into();
-        let transmit_timeout = Duration::from_millis(if command.transmit_timeout < 0 {
-            0
-        } else {
-            command.transmit_timeout.try_into().unwrap()
-        });
-        Ok(Cmd {
-            initiator,
-            destination,
-            ack: command.ack != 0,
-            eom: command.eom != 0,
-            opcode,
-            parameters,
-            opcode_set: command.opcode_set != 0,
-            transmit_timeout,
-        })
-    }
-}
-
-impl TryFrom<cec_log_message> for LogMsg {
-    type Error = Error;
-
-    fn try_from(log_message: cec_log_message) -> Result<Self> {
-        let c_str: &CStr = unsafe { CStr::from_ptr(log_message.message) };
-        let message = c_str
-            .to_str()
-            .map_err(|_| TryFromLogMsgError::MessageParseError)?
-            .to_owned();
-        let level =
-            LogLevel::from_repr(log_message.level).ok_or(TryFromLogMsgError::LogLevelParseError)?;
-        let time = log_message
-            .time
-            .try_into()
-            .map_err(|_| TryFromLogMsgError::TimestampParseError)?;
-
-        Ok(LogMsg {
-            message,
-            level,
-            time: Duration::from_millis(time),
-        })
-    }
-}
-
-impl fmt::Display for LogLevel {
+impl Display for LogLevel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LogLevel::Error => write!(f, "Error"),
@@ -785,49 +722,11 @@ impl LogicalAddresses {
     }
 }
 
-impl TryFrom<cec_logical_addresses> for LogicalAddresses {
-    type Error = Error;
-
-    fn try_from(addresses: cec_logical_addresses) -> Result<Self> {
-        let primary = LogicalAddress::from_repr(addresses.primary)
-            .ok_or(TryFromLogicalAddressesError::InvalidPrimaryAddress)?;
-        let primary = KnownLogicalAddress::new(primary)
-            .ok_or(TryFromLogicalAddressesError::UnknownPrimaryAddress)?;
-
-        let addresses = HashSet::from_iter(addresses.addresses.into_iter().enumerate().filter_map(
-            |(logical_addr, addr_mask)| {
-                let logical_addr = logical_addr as c_int;
-                // If logical address x is in use, addresses.addresses[x] != 0.
-                if addr_mask != 0 {
-                    RegisteredLogicalAddress::new(LogicalAddress::try_from(logical_addr).unwrap())
-                } else {
-                    None
-                }
-            },
-        ));
-
-        Ok(Self { primary, addresses })
-    }
-}
-
-impl TryFrom<cec_keypress> for Keypress {
-    type Error = Error;
-
-    fn try_from(keypress: cec_keypress) -> Result<Self> {
-        let keycode = UserControlCode::from_repr(keypress.keycode)
-            .ok_or(TryFromKeypressError::UnknownKeycode)?;
-        Ok(Keypress {
-            keycode,
-            duration: Duration::from_millis(keypress.duration.into()),
-        })
-    }
-}
-
-impl DeviceTypes {
-    pub fn new(value: DeviceType) -> DeviceTypes {
+impl DeviceKinds {
+    pub fn new(value: DeviceKind) -> DeviceKinds {
         let mut inner = ArrayVec::<_, 5>::new();
         inner.push(value);
-        DeviceTypes(inner)
+        DeviceKinds(inner)
     }
 }
 
@@ -839,20 +738,6 @@ impl Default for LogicalAddresses {
         }
     }
 }
-
-impl From<String> for CfgBuilderError {
-    fn from(s: String) -> Self {
-        Self::ValidationError(s)
-    }
-}
-
-impl From<UninitializedFieldError> for CfgBuilderError {
-    fn from(e: UninitializedFieldError) -> Self {
-        Self::UninitializedField(e.field_name())
-    }
-}
-
-unsafe impl Send for Connection {}
 
 fn first_n<const N: usize>(string: &str) -> [::std::os::raw::c_char; N] {
     let mut data: [::std::os::raw::c_char; N] = [0; N];

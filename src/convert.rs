@@ -30,10 +30,10 @@ impl From<RegisteredLogicalAddress> for cec_logical_address {
 }
 
 impl From<DataPacket> for cec_datapacket {
-    fn from(datapacket: DataPacket) -> cec_datapacket {
+    fn from(datapacket: DataPacket) -> Self {
         let mut data = [0u8; 64];
         data[..datapacket.0.len()].clone_from_slice(datapacket.0.as_slice());
-        cec_datapacket {
+        Self {
             data,
             size: datapacket.0.len() as u8,
         }
@@ -41,9 +41,9 @@ impl From<DataPacket> for cec_datapacket {
 }
 
 impl From<cec_datapacket> for DataPacket {
-    fn from(datapacket: cec_datapacket) -> DataPacket {
+    fn from(datapacket: cec_datapacket) -> Self {
         let end = datapacket.size as usize;
-        let mut packet = DataPacket(ArrayVec::new());
+        let mut packet = Self(ArrayVec::new());
         packet
             .0
             .try_extend_from_slice(&datapacket.data[..end])
@@ -53,8 +53,8 @@ impl From<cec_datapacket> for DataPacket {
 }
 
 impl From<Cmd> for cec_command {
-    fn from(command: Cmd) -> cec_command {
-        cec_command {
+    fn from(command: Cmd) -> Self {
+        Self {
             initiator: command.initiator.repr(),
             destination: command.destination.repr(),
             ack: command.ack.into(),
@@ -68,10 +68,10 @@ impl From<Cmd> for cec_command {
 }
 
 impl From<LogicalAddresses> for cec_logical_addresses {
-    fn from(addresses: LogicalAddresses) -> cec_logical_addresses {
+    fn from(addresses: LogicalAddresses) -> Self {
         // cec_logical_addresses.addresses is a 'mask'
         // cec_logical_addresses.addresses[logical_address value] = 1 when mask contains the address
-        let mut data = cec_logical_addresses {
+        let mut data = Self {
             primary: addresses.primary.into(),
             addresses: [0; 16],
         };
@@ -84,10 +84,10 @@ impl From<LogicalAddresses> for cec_logical_addresses {
     }
 }
 
-impl From<DeviceTypes> for cec_device_type_list {
-    fn from(device_types: DeviceTypes) -> cec_device_type_list {
-        let mut devices = cec_device_type_list {
-            types: [DeviceType::Reserved.repr(); 5],
+impl From<DeviceKinds> for cec_device_type_list {
+    fn from(device_types: DeviceKinds) -> Self {
+        let mut devices = Self {
+            types: [DeviceKind::Reserved.repr(); 5],
         };
         for (i, type_id) in device_types.0.iter().enumerate() {
             devices.types[i] = (*type_id).repr();
@@ -97,15 +97,15 @@ impl From<DeviceTypes> for cec_device_type_list {
 }
 
 impl From<&Cfg> for libcec_configuration {
-    fn from(config: &Cfg) -> libcec_configuration {
-        let mut cfg: libcec_configuration;
+    fn from(config: &Cfg) -> Self {
+        let mut cfg: Self;
         unsafe {
-            cfg = mem::zeroed::<libcec_configuration>();
+            cfg = mem::zeroed::<Self>();
             libcec_clear_configuration(&mut cfg);
         }
         cfg.clientVersion = libcec_version::CURRENT as _;
-        cfg.strDeviceName = first_n::<{ LIBCEC_OSD_NAME_SIZE as usize }>(&config.device_name);
-        cfg.deviceTypes = DeviceTypes::new(config.device_type).into();
+        cfg.strDeviceName = first_n::<{ LIBCEC_OSD_NAME_SIZE as usize }>(&config.name);
+        cfg.deviceTypes = DeviceKinds::new(config.kind).into();
         if let Some(v) = config.physical_address {
             cfg.iPhysicalAddress = v;
         }
@@ -124,7 +124,7 @@ impl From<&Cfg> for libcec_configuration {
         if let Some(v) = config.power_off_devices.clone() {
             cfg.powerOffDevices = v.into();
         }
-        if let Some(v) = config.get_settings_from_rom {
+        if let Some(v) = config.settings_from_rom {
             cfg.bGetSettingsFromROM = v.into();
         }
         if let Some(v) = config.activate_source {
@@ -133,7 +133,7 @@ impl From<&Cfg> for libcec_configuration {
         if let Some(v) = config.power_off_on_standby {
             cfg.bPowerOffOnStandby = v.into();
         }
-        if let Some(v) = config.device_language.clone() {
+        if let Some(v) = config.language.clone() {
             cfg.strDeviceLanguage = first_n::<3>(&v);
         }
         if let Some(v) = config.monitor_only {
@@ -161,6 +161,185 @@ impl From<&Cfg> for libcec_configuration {
             cfg.bAutoWakeAVR = v.into();
         }
         cfg
+    }
+}
+
+impl TryFrom<libcec_configuration> for Cfg {
+    type Error = Error;
+
+    fn try_from(value: libcec_configuration) -> Result<Self> {
+        Ok(Self {
+            on_key_press: todo!(),
+            on_command_received: todo!(),
+            on_log_message: todo!(),
+            on_cfg_changed: todo!(),
+            on_alert: todo!(),
+            on_menu_state_change: todo!(),
+            on_source_activated: todo!(),
+            device: todo!(),
+            detect_device: todo!(),
+            timeout: todo!(),
+            name: todo!(),
+            kind: todo!(),
+            physical_address: todo!(),
+            base_device: todo!(),
+            hdmi_port: todo!(),
+            tv_vendor: todo!(),
+            wake_devices: todo!(),
+            power_off_devices: todo!(),
+            settings_from_rom: todo!(),
+            activate_source: todo!(),
+            power_off_on_standby: todo!(),
+            language: todo!(),
+            monitor_only: todo!(),
+            adapter_type: todo!(),
+            combo_key: todo!(),
+            combo_key_timeout: todo!(),
+            button_repeat_rate: todo!(),
+            button_release_delay: todo!(),
+            double_tap_timeout: todo!(),
+            autowake_avr: todo!(),
+        })
+    }
+}
+
+impl From<String> for CfgBuilderError {
+    fn from(s: String) -> Self {
+        Self::ValidationError(s)
+    }
+}
+
+impl From<UninitializedFieldError> for CfgBuilderError {
+    fn from(e: UninitializedFieldError) -> Self {
+        Self::UninitializedField(e.field_name())
+    }
+}
+
+impl TryFrom<KnownLogicalAddress> for RegisteredLogicalAddress {
+    type Error = Error;
+
+    fn try_from(address: KnownLogicalAddress) -> Result<Self> {
+        let unchecked_address = address.0;
+        Ok(Self::new(unchecked_address)
+            .ok_or(TryFromLogicalAddressesError::InvalidPrimaryAddress)?)
+    }
+}
+
+impl TryFrom<cec_command> for Cmd {
+    type Error = Error;
+
+    fn try_from(command: cec_command) -> Result<Self> {
+        let opcode = Opcode::from_repr(command.opcode).ok_or(TryFromCmdError::UnknownOpcode)?;
+        let initiator = LogicalAddress::from_repr(command.initiator)
+            .ok_or(TryFromCmdError::UnknownInitiator)?;
+        let destination = LogicalAddress::from_repr(command.destination)
+            .ok_or(TryFromCmdError::UnknownDestination)?;
+        let parameters = command.parameters.into();
+        let transmit_timeout = Duration::from_millis(if command.transmit_timeout < 0 {
+            0
+        } else {
+            command.transmit_timeout.try_into().unwrap()
+        });
+        Ok(Cmd {
+            initiator,
+            destination,
+            ack: command.ack != 0,
+            eom: command.eom != 0,
+            opcode,
+            parameters,
+            opcode_set: command.opcode_set != 0,
+            transmit_timeout,
+        })
+    }
+}
+
+impl TryFrom<cec_log_message> for LogMsg {
+    type Error = Error;
+
+    fn try_from(log_message: cec_log_message) -> Result<Self> {
+        let c_str: &CStr = unsafe { CStr::from_ptr(log_message.message) };
+        let message = c_str
+            .to_str()
+            .map_err(|_| TryFromLogMsgError::MessageParseError)?
+            .to_owned();
+        let level =
+            LogLevel::from_repr(log_message.level).ok_or(TryFromLogMsgError::LogLevelParseError)?;
+        let time = log_message
+            .time
+            .try_into()
+            .map_err(|_| TryFromLogMsgError::TimestampParseError)?;
+
+        Ok(LogMsg {
+            message,
+            level,
+            time: Duration::from_millis(time),
+        })
+    }
+}
+
+impl TryFrom<cec_logical_addresses> for LogicalAddresses {
+    type Error = Error;
+
+    fn try_from(addresses: cec_logical_addresses) -> Result<Self> {
+        let primary = LogicalAddress::from_repr(addresses.primary)
+            .ok_or(TryFromLogicalAddressesError::InvalidPrimaryAddress)?;
+        let primary = KnownLogicalAddress::new(primary)
+            .ok_or(TryFromLogicalAddressesError::UnknownPrimaryAddress)?;
+
+        let addresses = HashSet::from_iter(addresses.addresses.into_iter().enumerate().filter_map(
+            |(logical_addr, addr_mask)| {
+                let logical_addr = logical_addr as c_int;
+                // If logical address x is in use, addresses.addresses[x] != 0.
+                if addr_mask != 0 {
+                    RegisteredLogicalAddress::new(LogicalAddress::try_from(logical_addr).unwrap())
+                } else {
+                    None
+                }
+            },
+        ));
+
+        Ok(Self { primary, addresses })
+    }
+}
+
+impl TryFrom<cec_logical_address> for KnownLogicalAddress {
+    type Error = Error;
+
+    fn try_from(addr: cec_logical_address) -> Result<Self> {
+        let addr = LogicalAddress::from_repr(addr)
+            .ok_or(TryFromLogicalAddressesError::InvalidPrimaryAddress)?;
+        let addr = KnownLogicalAddress::new(addr)
+            .ok_or(TryFromLogicalAddressesError::UnknownPrimaryAddress)?;
+        Ok(addr)
+    }
+}
+
+impl TryFrom<cec_keypress> for Keypress {
+    type Error = Error;
+
+    fn try_from(keypress: cec_keypress) -> Result<Self> {
+        let keycode = UserControlCode::from_repr(keypress.keycode)
+            .ok_or(TryFromKeypressError::UnknownKeycode)?;
+        Ok(Keypress {
+            keycode,
+            duration: Duration::from_millis(keypress.duration.into()),
+        })
+    }
+}
+
+impl TryFrom<libcec_alert> for Alert {
+    type Error = Error;
+
+    fn try_from(keypress: libcec_alert) -> Result<Self> {
+        Ok(Self::from_repr(keypress).ok_or(TryFromAlertError::UnknownAlert)?)
+    }
+}
+
+impl TryFrom<cec_menu_state> for MenuState {
+    type Error = Error;
+
+    fn try_from(value: cec_menu_state) -> Result<Self> {
+        Ok(Self::from_repr(value).ok_or(TryFromMenuStateError::UnknownMenuState)?)
     }
 }
 
@@ -527,19 +706,19 @@ mod tests {
         #[test]
         fn test_to_ffi_empty() {
             let devices = ArrayVec::new();
-            let ffi_devices: cec_device_type_list = DeviceTypes(devices).into();
-            assert_eq!(ffi_devices.types, [DeviceType::Reserved.repr(); 5]);
+            let ffi_devices: cec_device_type_list = DeviceKinds(devices).into();
+            assert_eq!(ffi_devices.types, [DeviceKind::Reserved.repr(); 5]);
         }
 
         #[test]
         fn test_to_ffi_two_devices() {
             let mut devices = ArrayVec::new();
-            devices.push(DeviceType::PlaybackDevice);
-            devices.push(DeviceType::RecordingDevice);
-            let ffi_devices: cec_device_type_list = DeviceTypes(devices).into();
-            assert_eq!(ffi_devices.types[0], DeviceType::PlaybackDevice.repr());
-            assert_eq!(ffi_devices.types[1], DeviceType::RecordingDevice.repr());
-            assert_eq!(ffi_devices.types[2..], [DeviceType::Reserved.repr(); 3]);
+            devices.push(DeviceKind::PlaybackDevice);
+            devices.push(DeviceKind::RecordingDevice);
+            let ffi_devices: cec_device_type_list = DeviceKinds(devices).into();
+            assert_eq!(ffi_devices.types[0], DeviceKind::PlaybackDevice.repr());
+            assert_eq!(ffi_devices.types[1], DeviceKind::RecordingDevice.repr());
+            assert_eq!(ffi_devices.types[2..], [DeviceKind::Reserved.repr(); 3]);
         }
     }
 

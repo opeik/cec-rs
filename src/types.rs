@@ -98,7 +98,7 @@ pub enum DeckInfo {
 
 #[EnumRepr(type = "cec_device_type")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum DeviceType {
+pub enum DeviceKind {
     Tv = cec_device_type::TV,
     RecordingDevice = cec_device_type::RECORDING_DEVICE,
     Reserved = cec_device_type::RESERVED,
