@@ -167,39 +167,40 @@ impl From<&Cfg> for libcec_configuration {
 impl TryFrom<libcec_configuration> for Cfg {
     type Error = Error;
 
-    fn try_from(value: libcec_configuration) -> Result<Self> {
-        Ok(Self {
-            on_key_press: todo!(),
-            on_command_received: todo!(),
-            on_log_message: todo!(),
-            on_cfg_changed: todo!(),
-            on_alert: todo!(),
-            on_menu_state_change: todo!(),
-            on_source_activated: todo!(),
-            device: todo!(),
-            detect_device: todo!(),
-            timeout: todo!(),
-            name: todo!(),
-            kind: todo!(),
-            physical_address: todo!(),
-            base_device: todo!(),
-            hdmi_port: todo!(),
-            tv_vendor: todo!(),
-            wake_devices: todo!(),
-            power_off_devices: todo!(),
-            settings_from_rom: todo!(),
-            activate_source: todo!(),
-            power_off_on_standby: todo!(),
-            language: todo!(),
-            monitor_only: todo!(),
-            adapter_type: todo!(),
-            combo_key: todo!(),
-            combo_key_timeout: todo!(),
-            button_repeat_rate: todo!(),
-            button_release_delay: todo!(),
-            double_tap_timeout: todo!(),
-            autowake_avr: todo!(),
-        })
+    fn try_from(_value: libcec_configuration) -> Result<Self> {
+        todo!()
+        // Ok(Self {
+        //     on_key_press: todo!(),
+        //     on_command_received: todo!(),
+        //     on_log_message: todo!(),
+        //     on_cfg_changed: todo!(),
+        //     on_alert: todo!(),
+        //     on_menu_state_change: todo!(),
+        //     on_source_activated: todo!(),
+        //     device: todo!(),
+        //     detect_device: todo!(),
+        //     timeout: todo!(),
+        //     name: todo!(),
+        //     kind: todo!(),
+        //     physical_address: todo!(),
+        //     base_device: todo!(),
+        //     hdmi_port: todo!(),
+        //     tv_vendor: todo!(),
+        //     wake_devices: todo!(),
+        //     power_off_devices: todo!(),
+        //     settings_from_rom: todo!(),
+        //     activate_source: todo!(),
+        //     power_off_on_standby: todo!(),
+        //     language: todo!(),
+        //     monitor_only: todo!(),
+        //     adapter_type: todo!(),
+        //     combo_key: todo!(),
+        //     combo_key_timeout: todo!(),
+        //     button_repeat_rate: todo!(),
+        //     button_release_delay: todo!(),
+        //     double_tap_timeout: todo!(),
+        //     autowake_avr: todo!(),
+        // })
     }
 }
 

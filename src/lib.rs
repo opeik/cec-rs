@@ -10,6 +10,7 @@ use std::{
     ffi::{c_int, CStr, CString},
     fmt::{self, Display},
     pin::Pin,
+    ptr::addr_of_mut,
     result,
     time::Duration,
 };
@@ -182,7 +183,7 @@ pub struct Keypress {
 pub struct DeviceKinds(pub ArrayVec<DeviceKind, 5>);
 
 #[derive(derive_more::Debug)]
-struct Callbacks {
+pub struct Callbacks {
     #[debug(skip)]
     pub on_key_press: Option<Box<OnKeyPress>>,
 
@@ -357,7 +358,7 @@ impl CfgBuilder {
 }
 
 #[derive(Debug)]
-pub struct Connection(pub Cfg, pub libcec_connection_t, Pin<Box<Callbacks>>);
+pub struct Connection(pub Cfg, pub libcec_connection_t, pub Pin<Box<Callbacks>>);
 unsafe impl Send for Connection {}
 
 impl Connection {
@@ -605,7 +606,11 @@ impl Cfg {
         }
 
         let callback_ret = unsafe {
-            cec_sys::libcec_set_callbacks(connection.1, &mut CALLBACKS, rust_callbacks_as_void_ptr)
+            cec_sys::libcec_set_callbacks(
+                connection.1,
+                addr_of_mut!(CALLBACKS),
+                rust_callbacks_as_void_ptr,
+            )
         };
         if callback_ret == 0 {
             return Err(ConnectionError::CallbackRegistrationFailed.into());
